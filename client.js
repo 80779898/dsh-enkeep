@@ -3,10 +3,10 @@
  *
  * Two capabilities, no dependencies on other plugins:
  *   1) Chat column width: narrow (native) / wide (no 920px cap) via a
- *      `styles.insert` stylesheet that overrides --dsh-chat-content-width
- *      directly on [data-conversation-content] (body-level overrides fail:
- *      the conversation DIV defines that variable itself, and 100% resolves
- *      in differing containing blocks for text vs input).
+ *      <style> tag (inserted into document.head, cleaned up on unload) that
+ *      overrides --dsh-chat-content-width directly on [data-conversation-content]
+ *      (body-level overrides fail: the conversation DIV defines that variable
+ *      itself, and 100% resolves in differing containing blocks).
  *   2) Sidebar launcher button: a sidebar.panellist entry that opens a panel in
  *      the center column, with visibility controlled by the showLauncher config.
  *
