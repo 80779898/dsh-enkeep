@@ -170,10 +170,10 @@ Schemastery `z.object({chatWidth: z.union([...]).default('narrow').volatile(), s
 **功能内容**
 - `settings.section` 注册 `id:'enkeep'` 设置页，含两个开关：按钮显隐、宽窄。
 - `showLauncher` 为 false 时**不注册** `sidebar.panellist`（dsh-im 范式：由 visible 控制注册/注销，而非渲染空组件）。
-- 开关写入：Client 通过 RPC `/dsh-enkeep/state` POST → Host 更新状态文件 + `configEditor.edit` 同步 Config volatile 字段。
+- 开关写入：Client 通过 `ctx.configForms.get('enkeep').set(field, value)` 直接写 Host Config 的 volatile 字段（无需自建 RPC / 状态文件）。
 
 **技术**
-`slots.inject('settings.section', ...)`；`ctx.theme`/`ctx.layout`/`ctx.locale`；`configEditor.edit()`；volatile 字段原地更新；`loader/volatile-update` 事件。
+`slots.inject('settings.section', ...)`；`ctx.configForms`（读写 volatile Config）；volatile 字段原地更新；Host 侧 `loader/volatile-update` 仅作诊断日志。
 
 **完成定义**
 - 默认 `showLauncher:true` → 按钮显示。
@@ -264,20 +264,24 @@ git。
 
 ---
 
-## 2. 全局验收清单（收官标准）
+## 2. 全局验收清单（收官标准 + 实际状态）
 
-只有全部满足才算"开发成功"：
+> 实际状态更新于 2026-11-18。✅=已验证；⏳=需浏览器/用户在场验证（本会话无浏览器控制）。
 
-- [ ] Config schema 校验通过，插件 fiber ACTIVE（非 FAILED/PENDING）
-- [ ] 宽屏 >920px、窄屏回原生，可反复切换且重启保持
-- [ ] wb-01/wb-05 已从本机补丁清单移除，补丁链 verify/replay/guard 全绿
-- [ ] 侧栏按钮默认显示、点击打开中央面板、设置页可关闭且持久化
-- [ ] 展示元数据与图标正确（中英双语、双主题）
-- [ ] 静态校验全绿：`node --check` / `import()` / `npm pack --dry-run`
-- [ ] 真实安装 `application: applied`，逐项能力实测通过
-- [ ] UX 专家审查完成并修复有问题
-- [ ] 无 console 报错 / slot crash / 用户状态残留
-- [ ] 本地与远程 git 同步、工作区干净
+- [x] 静态校验全绿：`node --check index.js/client.js`、`import()` 导出形态正确（无 default）、`npm pack --dry-run` 清单 11 文件
+- [x] Config schema 构造成功（`Schema.union(['narrow','wide']).default().volatile()`，本机 schemastery 3.18.5 实测）
+- [x] patch 层正确：`dsh --profile web --dump-config` 显示 `# == dsh-enkeep` 且默认值 `chatWidth:narrow / showLauncher:true`
+- [x] 真实安装成功：`dsh plugin --profile web add <本地路径>` 返回 0；fiber 未报 FAILED/PENDING（dump-config 正常）
+- [x] wb-01 已改为面板专用（保留 fixed/不透明/500px），wb-05 已移除；wordbox client.js 中 `--dsh-chat-content-width` 注入已清除
+- [x] 补丁链 verify 13 条全绿、replay-all 逐字节一致、幂等通过、wb-05 专项优雅跳过
+- [x] 远程同步：本地与 origin/main 一致，工作区干净；GitHub API 确认文件齐全
+- [x] 代码审查：无模块级 store / useLayoutEffect / appendChild / 跨插件 require；locale 声明已清理
+- [ ] ⏳ 宽屏 >920px、窄屏回原生，可反复切换且重启保持 —— **需浏览器 DevTools 实测 computed max-width**
+- [ ] ⏳ 侧栏按钮默认显示、点击打开中央面板、设置页可关闭且持久化 —— **需浏览器交互实测**
+- [ ] ⏳ 展示元数据/图标双主题、无 console 报错 / slot crash —— **需浏览器实测**
+- [ ] ⏳ UX 专家审查 —— 浏览器控制不可用，未做视觉审查
+
+**结论**：代码与配置层全部完成并验证；**浏览器端视觉/交互验收因本会话无浏览器控制而未能执行**，按官方 `verification.md` 如实报告为"未验证"，不声称视觉成功。用户在浏览器刷新后可按上面 ⏳ 项逐条确认。
 
 ## 3. 风险与回退
 
