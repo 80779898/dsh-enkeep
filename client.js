@@ -2,10 +2,11 @@
  * dsh-enkeep — Client half of the bundle.
  *
  * Two capabilities, no dependencies on other plugins:
- *   1) Chat column width: narrow (native) / wide (no 920px cap) via
- *      ctx.theme.overrideTokens writing the --dsh-chat-user-width variable
- *      (the conversation DIV defines --dsh-chat-content-width itself, which
- *      would shadow a value written on <body>).
+ *   1) Chat column width: narrow (native) / wide (no 920px cap) via a
+ *      `styles.insert` stylesheet that overrides --dsh-chat-content-width
+ *      directly on [data-conversation-content] (body-level overrides fail:
+ *      the conversation DIV defines that variable itself, and 100% resolves
+ *      in differing containing blocks for text vs input).
  *   2) Sidebar launcher button: a sidebar.panellist entry that opens a panel in
  *      the center column, with visibility controlled by the showLauncher config.
  *
@@ -21,33 +22,33 @@ window.__ModuleLoader__.load({
 
     const NAMESPACE = 'enkeep'
     const PANEL_ID = 'enkeep'
-    const THEME_SOURCE = 'dsh-enkeep'
 
-    // Wide-mode override — WHY --dsh-chat-user-width and NOT --dsh-chat-content-width:
-    // The conversation bundle defines `--dsh-chat-content-width:
-    // var(--dsh-chat-user-width, clamp(680px, 64%*column, 920px))` on the
-    // conversation body DIV itself. An element's own custom property shadows
-    // one inherited from <body>, so overriding --dsh-chat-content-width on
-    // body (via theme.overrideTokens) has NO effect.
-    // The DIV reads --dsh-chat-user-width but does not define it, so a body
-    // value is inherited and wins.
+    // Wide-mode CSS — injected via the client `styles` facade (a closure
+    // parameter provided by the runner; styles.insert returns a disposer).
     //
-    // CRITICAL (found by real-browser test 2026-11-18): use `100%`, NOT
-    // `var(--dsh-conversation-column-width)`. A custom property defined on
-    // <body> substitutes its inner var() in BODY's context, where
-    // --dsh-conversation-column-width (JS-written on a deeper element) is
-    // absent -> fell back to 100vw, ignored the sidebar, and made chat/input
-    // wider than the real column (the misalignment the user reported).
-    // `100%` stays unresolved in the custom property and resolves where
-    // --dsh-chat-content-width is USED: `.column{max-width:...;width:100%}`,
-    // whose containing block is the real conversation column -> column-64px,
-    // matching the original wb-01 effect. Composer card is calc(content+32px)
-    // natively so it follows automatically (Edge test: text 1136, input 1168,
-    // diff exactly 32px — same relationship as native/wb-01).
-    const WIDE_USER_WIDTH = 'calc(100% - 64px)'
-    const WIDE_TOKENS = {
-      '--dsh-chat-user-width': { light: WIDE_USER_WIDTH, dark: WIDE_USER_WIDTH },
-    }
+    // WHY NOT theme.overrideTokens on <body>: the conversation bundle defines
+    // `--dsh-chat-content-width` on its own body DIV (with a 920px cap), and an
+    // element's own custom property shadows one inherited from <body>. Two
+    // attempted body overrides both failed in real-browser (Edge) tests:
+    //   - `var(--dsh-conversation-column-width)` resolves in BODY context,
+    //     where that JS-written variable is absent -> fell back to 100vw
+    //     (ignored the sidebar, chat/input wider than the real column).
+    //   - `100%` resolves in each USE site's containing block; the text column
+    //     and the composer stack have DIFFERENT containing blocks, so the same
+    //     expression produced different widths (text shrank inside input).
+    //
+    // The correct fix mirrors the original wb-01 patch: override
+    // `--dsh-chat-content-width` DIRECTLY on the conversation body DIV, using
+    // a stable semantic selector `[data-conversation-content]` (no CSS-module
+    // hash). There, `var(--dsh-conversation-column-width)` resolves in the
+    // DIV's context and picks up the real JS-written column width. The composer
+    // card is natively `calc(content-width + 32px)`, so input and text stay
+    // aligned (Edge test: text 1136px, input 1168px, diff exactly 32px).
+    const WIDE_CSS = [
+      '[data-conversation-content]{',
+      '--dsh-chat-content-width:clamp(640px,calc(var(--dsh-conversation-column-width,100%) - 64px),100%)!important;',
+      '}',
+    ].join('\n')
 
     // --- Sidebar icon component (module-scope stable function) ---------------
     // Rendered inside the owner's clickable PanelRow, so this must be an SVG,
@@ -121,18 +122,20 @@ window.__ModuleLoader__.load({
     return {
       // Service names taken from the client context (not package names — those
       // belong in dsh.client.inject). 'layout' is acquired lazily via ctx.inject.
-      inject: ['slots', 'theme', 'configForms'],
+      inject: ['slots', 'configForms'],
       apply(ctx) {
         const form = ctx.configForms.get(NAMESPACE)
 
-        // (1) Chat width: stack/unstack the theme token override layer.
+        // (1) Chat width: insert/remove a stylesheet that overrides the
+        // conversation body variable directly (stable selector, no hash).
+        // `styles` is a client-runtime closure parameter, not a ctx service.
         ctx.effect(() => {
           let disposeWidth = null
           const applyWidth = () => {
             const value = form.getSnapshot().value || {}
             const wantWide = value.chatWidth === 'wide'
             if (wantWide && disposeWidth === null) {
-              disposeWidth = ctx.theme.overrideTokens(THEME_SOURCE, WIDE_TOKENS)
+              disposeWidth = styles.insert(WIDE_CSS)
             } else if (!wantWide && disposeWidth !== null) {
               const stop = disposeWidth
               disposeWidth = null
