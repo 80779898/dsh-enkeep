@@ -21,13 +21,22 @@ window.__ModuleLoader__.load({
     const PANEL_ID = 'enkeep'
     const THEME_SOURCE = 'dsh-enkeep'
 
-    // Wide-mode override: remove the native 920px cap, keep a 640px floor.
-    // Values are scheme-invariant, so light/dark repeat the same string.
-    const WIDE_WIDTH = 'clamp(640px, calc(var(--dsh-conversation-column-width, 100%) - 64px), 100%)'
-    const WIDE_COMPOSER = 'calc(100% - 16px)'
+    // Wide-mode override — WHY --dsh-chat-user-width and NOT --dsh-chat-content-width:
+    // The conversation bundle defines `.body{--dsh-chat-content-width:
+    // var(--dsh-chat-user-width, clamp(680px, 64%*column, 920px))}` on the
+    // conversation DIV itself. An element's own custom property shadows one
+    // inherited from <body>, so overriding --dsh-chat-content-width on body
+    // (via theme.overrideTokens) has NO effect — that was the original bug.
+    // The DIV reads --dsh-chat-user-width but does not define it, so a body
+    // value is inherited and wins. CSS custom properties are late-bound: the
+    // inner var(--dsh-conversation-column-width) resolves in the using
+    // element's context, where the JS-written column width lives. This removes
+    // the 920px cap using the real column width (matches the old wb-01 effect).
+    // --dsh-composer-card-max-width is calc(content-width + 32px) natively, so
+    // it follows automatically; no need to override it.
+    const WIDE_USER_WIDTH = 'calc(var(--dsh-conversation-column-width, 100vw) - 64px)'
     const WIDE_TOKENS = {
-      '--dsh-chat-content-width': { light: WIDE_WIDTH, dark: WIDE_WIDTH },
-      '--dsh-composer-card-max-width': { light: WIDE_COMPOSER, dark: WIDE_COMPOSER },
+      '--dsh-chat-user-width': { light: WIDE_USER_WIDTH, dark: WIDE_USER_WIDTH },
     }
 
     // --- Sidebar icon component (module-scope stable function) ---------------
