@@ -3,6 +3,8 @@
 > 状态：**用户已拍板**（2026-11-18）——见文末「六、已确认决策」
 > 本机版本：DSH 0.2.1-rc.2；评估基于官方文档 + 本机已安装 bundle 交叉验证
 > 约束：不依赖其他插件（dsh-wordbox 等），在原生基础上实现
+>
+> **实施后修正（覆盖下文早期设计）**：① `chatWidth` 默认改为 `wide`（安装即宽屏）；② 覆盖变量从 `--dsh-chat-content-width` 改为 `--dsh-chat-user-width`（前者被 conversation div 自身定义遮蔽，无效）。
 
 ---
 

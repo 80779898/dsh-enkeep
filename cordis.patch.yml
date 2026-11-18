@@ -2,5 +2,5 @@
     - id: enkeep
       name: dsh-enkeep
       config:
-        chatWidth: narrow
+        chatWidth: wide
         showLauncher: true

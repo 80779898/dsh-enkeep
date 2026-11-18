@@ -5,6 +5,10 @@
 > 参照样本：本机 `@xmanrui/dsh-im` v5.7.0 的 `sidebar.panellist` + `main` + `settings.section` 范式。
 > 本机版本：DSH 0.2.1-rc.2；文档版本偏差见 `~/.dsh/references/dsh-plugin-dev/插件开发流程.md`。
 > 本计划**不含时间安排**。
+>
+> **实施后的两处修正（2026-11-18，覆盖下文早期描述）**：
+> 1. **默认宽屏**：`chatWidth` 默认值从 `narrow` 改为 `wide`（`index.js` schema + `cordis.patch.yml`），安装后默认即宽屏。下文"默认 narrow"的描述为早期设计，已过时。
+> 2. **覆盖的变量改为 `--dsh-chat-user-width`**：早期设计写 `--dsh-chat-content-width`，但 conversation 的 div 自己定义了它（带 920px 硬顶），会遮蔽 body 继承值导致无效。正确做法是覆盖 div 读取但不定义的 `--dsh-chat-user-width`。下文相关描述为早期设计。
 
 ---
 

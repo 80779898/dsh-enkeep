@@ -14,7 +14,7 @@ import Schema from '@deepseek-ai/schemastery'
 export const name = 'enkeep'
 
 export const Config = Schema.object({
-  chatWidth: Schema.union(['narrow', 'wide']).default('narrow').volatile(),
+  chatWidth: Schema.union(['narrow', 'wide']).default('wide').volatile(),
   showLauncher: Schema.boolean().default(true).volatile(),
 })
 

@@ -3,7 +3,9 @@
  *
  * Two capabilities, no dependencies on other plugins:
  *   1) Chat column width: narrow (native) / wide (no 920px cap) via
- *      ctx.theme.overrideTokens writing the --dsh-chat-content-width variable.
+ *      ctx.theme.overrideTokens writing the --dsh-chat-user-width variable
+ *      (the conversation DIV defines --dsh-chat-content-width itself, which
+ *      would shadow a value written on <body>).
  *   2) Sidebar launcher button: a sidebar.panellist entry that opens a panel in
  *      the center column, with visibility controlled by the showLauncher config.
  *
