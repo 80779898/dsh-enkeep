@@ -102,7 +102,7 @@ window.__ModuleLoader__.load({
     return {
       // Service names taken from the client context (not package names — those
       // belong in dsh.client.inject). 'layout' is acquired lazily via ctx.inject.
-      inject: ['slots', 'theme', 'configForms', 'locale'],
+      inject: ['slots', 'theme', 'configForms'],
       apply(ctx) {
         const form = ctx.configForms.get(NAMESPACE)
 
@@ -136,7 +136,6 @@ window.__ModuleLoader__.load({
               const unregisterPage = layoutCtx.slots.register({
                 name: 'main',
                 key: PANEL_ID,
-                locale: NAMESPACE,
                 inject: () => ({ form }),
               }, ({ form: f }) => h(EnkeepPanel, { form: f }))
 
@@ -150,8 +149,7 @@ window.__ModuleLoader__.load({
                       name: 'sidebar.panellist',
                       id: PANEL_ID,
                       order: 10,
-                      label: () => 'Enkeep',
-                      locale: NAMESPACE,
+                      label: 'Enkeep',
                     }, EnkeepSidebarIcon))
                 } else if (!want && stopSidebar !== null) {
                   const stop = stopSidebar
@@ -168,7 +166,6 @@ window.__ModuleLoader__.load({
                   name: 'plugins.detail.actions',
                   id: 'enkeep-open',
                   order: 20,
-                  locale: NAMESPACE,
                   inject: () => ({ onOpen: () => layoutCtx.layout.selectPanel(PANEL_ID) }),
                 }, ({ onOpen }) => h('button', { type: 'button', onClick: onOpen }, '打开 Enkeep')))
 
@@ -186,8 +183,7 @@ window.__ModuleLoader__.load({
           name: 'settings.section',
           id: 'enkeep',
           order: 30,
-          label: () => 'Enkeep',
-          locale: NAMESPACE,
+          label: 'Enkeep',
           inject: () => ({ form }),
         }, ({ form: f }) => h(EnkeepSettings, { form: f }))), 'enkeep: settings')
       },
