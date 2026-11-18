@@ -23,8 +23,9 @@ window.__ModuleLoader__.load({
     const NAMESPACE = 'enkeep'
     const PANEL_ID = 'enkeep'
 
-    // Wide-mode CSS — injected via the client `styles` facade (a closure
-    // parameter provided by the runner; styles.insert returns a disposer).
+    // Wide-mode CSS — injected as a <style> element in document.head (the
+    // pattern dsh-im uses for normal bundle plugins; the `styles` closure
+    // parameter is only available to dynamic packages, so it is NOT used here).
     //
     // WHY NOT theme.overrideTokens on <body>: the conversation bundle defines
     // `--dsh-chat-content-width` on its own body DIV (with a 920px cap), and an
@@ -49,6 +50,21 @@ window.__ModuleLoader__.load({
       '--dsh-chat-content-width:clamp(640px,calc(var(--dsh-conversation-column-width,100%) - 64px),100%)!important;',
       '}',
     ].join('\n')
+    const WIDE_STYLE_ID = 'enkeep-wide'
+
+    // Insert our own <style> tag, idempotent by data attribute, with a disposer.
+    // This is the dsh-im pattern for normal bundle plugins (no `styles` facade).
+    function installWideStyle() {
+      if (typeof document === 'undefined') return () => {}
+      const existing = document.querySelector(`style[data-plugin-css="${WIDE_STYLE_ID}"]`)
+      if (existing) return () => {}
+      const style = document.createElement('style')
+      style.dataset.plugin = 'dsh-enkeep'
+      style.dataset.pluginCss = WIDE_STYLE_ID
+      style.textContent = WIDE_CSS
+      document.head.appendChild(style)
+      return () => style.remove()
+    }
 
     // --- Sidebar icon component (module-scope stable function) ---------------
     // Rendered inside the owner's clickable PanelRow, so this must be an SVG,
@@ -126,16 +142,15 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         const form = ctx.configForms.get(NAMESPACE)
 
-        // (1) Chat width: insert/remove a stylesheet that overrides the
+        // (1) Chat width: insert/remove a <style> tag that overrides the
         // conversation body variable directly (stable selector, no hash).
-        // `styles` is a client-runtime closure parameter, not a ctx service.
         ctx.effect(() => {
           let disposeWidth = null
           const applyWidth = () => {
             const value = form.getSnapshot().value || {}
             const wantWide = value.chatWidth === 'wide'
             if (wantWide && disposeWidth === null) {
-              disposeWidth = styles.insert(WIDE_CSS)
+              disposeWidth = installWideStyle()
             } else if (!wantWide && disposeWidth !== null) {
               const stop = disposeWidth
               disposeWidth = null
