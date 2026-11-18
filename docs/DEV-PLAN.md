@@ -9,6 +9,7 @@
 > **实施后的两处修正（2026-11-18，覆盖下文早期描述）**：
 > 1. **默认宽屏**：`chatWidth` 默认值从 `narrow` 改为 `wide`（`index.js` schema + `cordis.patch.yml`），安装后默认即宽屏。下文"默认 narrow"的描述为早期设计，已过时。
 > 2. **覆盖的变量改为 `--dsh-chat-user-width`**：早期设计写 `--dsh-chat-content-width`，但 conversation 的 div 自己定义了它（带 920px 硬顶），会遮蔽 body 继承值导致无效。正确做法是覆盖 div 读取但不定义的 `--dsh-chat-user-width`。下文相关描述为早期设计。
+> 3. **值必须用 `calc(100% - 64px)`，不能用 `var(--dsh-conversation-column-width)`**：真实浏览器实测（Edge headless）发现，body 上定义的自定义属性中的内层 `var()` 在 **body 上下文**求值，取不到 JS 写在更深元素上的栏宽变量，会回退成 `100vw`（忽略侧栏）→ 聊天/输入框过宽、与文字列对不齐。用 `100%` 则在使用处（`.column{max-width:...}` 的包含块=真实栏宽）解析，得到 `栏宽-64px`，与原 wb-01 一致。验证：文字列 1136px、输入框 1168px、差 32px。
 
 ---
 
