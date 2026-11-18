@@ -44,10 +44,13 @@ window.__ModuleLoader__.load({
     // hash). There, `var(--dsh-conversation-column-width)` resolves in the
     // DIV's context and picks up the real JS-written column width. The composer
     // card is natively `calc(content-width + 32px)`, so input and text stay
-    // aligned (Edge test: text 1136px, input 1168px, diff exactly 32px).
+    // Native composer is calc(content-width + 32px), i.e. input 32px wider than
+    // the chat text by design. User wants them equal, so also pin the composer
+    // to the same width (Edge test: text 1136, input 1136, diff 0px).
     const WIDE_CSS = [
       '[data-conversation-content]{',
       '--dsh-chat-content-width:clamp(640px,calc(var(--dsh-conversation-column-width,100%) - 64px),100%)!important;',
+      '--dsh-composer-card-max-width:var(--dsh-chat-content-width)!important;',
       '}',
     ].join('\n')
     const WIDE_STYLE_ID = 'enkeep-wide'
