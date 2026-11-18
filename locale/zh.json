@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Enkeep",
-    "description": "DeepSeek Harness 插件骨架，等待添加具体能力。",
+    "description": "在原生与宽屏之间切换聊天区宽度，并提供可在设置中隐藏的侧栏入口按钮。",
     "detail": "docs/DETAIL.md"
   }
 }

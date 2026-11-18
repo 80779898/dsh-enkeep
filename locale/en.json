@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Enkeep",
-    "description": "A DeepSeek Harness plugin skeleton, ready for capabilities.",
+    "description": "Toggle the chat column between native and wide layout, with a sidebar launcher you can hide in settings.",
     "detail": "docs/DETAIL.md"
   }
 }

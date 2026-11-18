@@ -1,4 +1,6 @@
 - insert:
     - id: enkeep
       name: dsh-enkeep
-      config: {}
+      config:
+        chatWidth: narrow
+        showLauncher: true
