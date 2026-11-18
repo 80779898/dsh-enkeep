@@ -24,19 +24,27 @@ window.__ModuleLoader__.load({
     const THEME_SOURCE = 'dsh-enkeep'
 
     // Wide-mode override — WHY --dsh-chat-user-width and NOT --dsh-chat-content-width:
-    // The conversation bundle defines `.body{--dsh-chat-content-width:
-    // var(--dsh-chat-user-width, clamp(680px, 64%*column, 920px))}` on the
-    // conversation DIV itself. An element's own custom property shadows one
-    // inherited from <body>, so overriding --dsh-chat-content-width on body
-    // (via theme.overrideTokens) has NO effect — that was the original bug.
+    // The conversation bundle defines `--dsh-chat-content-width:
+    // var(--dsh-chat-user-width, clamp(680px, 64%*column, 920px))` on the
+    // conversation body DIV itself. An element's own custom property shadows
+    // one inherited from <body>, so overriding --dsh-chat-content-width on
+    // body (via theme.overrideTokens) has NO effect.
     // The DIV reads --dsh-chat-user-width but does not define it, so a body
-    // value is inherited and wins. CSS custom properties are late-bound: the
-    // inner var(--dsh-conversation-column-width) resolves in the using
-    // element's context, where the JS-written column width lives. This removes
-    // the 920px cap using the real column width (matches the old wb-01 effect).
-    // --dsh-composer-card-max-width is calc(content-width + 32px) natively, so
-    // it follows automatically; no need to override it.
-    const WIDE_USER_WIDTH = 'calc(var(--dsh-conversation-column-width, 100vw) - 64px)'
+    // value is inherited and wins.
+    //
+    // CRITICAL (found by real-browser test 2026-11-18): use `100%`, NOT
+    // `var(--dsh-conversation-column-width)`. A custom property defined on
+    // <body> substitutes its inner var() in BODY's context, where
+    // --dsh-conversation-column-width (JS-written on a deeper element) is
+    // absent -> fell back to 100vw, ignored the sidebar, and made chat/input
+    // wider than the real column (the misalignment the user reported).
+    // `100%` stays unresolved in the custom property and resolves where
+    // --dsh-chat-content-width is USED: `.column{max-width:...;width:100%}`,
+    // whose containing block is the real conversation column -> column-64px,
+    // matching the original wb-01 effect. Composer card is calc(content+32px)
+    // natively so it follows automatically (Edge test: text 1136, input 1168,
+    // diff exactly 32px — same relationship as native/wb-01).
+    const WIDE_USER_WIDTH = 'calc(100% - 64px)'
     const WIDE_TOKENS = {
       '--dsh-chat-user-width': { light: WIDE_USER_WIDTH, dark: WIDE_USER_WIDTH },
     }
