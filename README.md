@@ -2,27 +2,57 @@
 
 > dsh-enkeep makes dsh better.
 
-一个 DeepSeek Harness (DSH) 插件项目。
+A DeepSeek Harness (DSH) plugin **bundle** skeleton.
 
-## 状态
+## Status
 
-🚧 初始化完成，开发中。
+🚧 Skeleton only — no capabilities implemented yet. See [docs/DETAIL.md](docs/DETAIL.md).
 
-## 安装
+## Structure
 
-```sh
-dsh plugin --profile web add <package-spec>
+```
+dsh-enkeep/
+├── package.json          # bundle manifest (dsh.bundle.patch) + engines.dsh
+├── cordis.patch.yml      # inserts one plugin row, referenced by package name
+├── index.js              # Host plugin entry (named exports only)
+├── locale/
+│   ├── en.json           # meta.title / description / detail (English)
+│   └── zh.json           # same metadata (Chinese)
+├── docs/
+│   └── DETAIL.md         # detail page named by meta.detail
+├── icon.svg              # 36×36 self-contained icon
+└── .gitignore
 ```
 
-## 开发
+## Install
 
 ```sh
-pnpm install
-pnpm run typecheck
-pnpm run build
+dsh plugin --profile web add github:80779898/dsh-enkeep
 ```
 
-## 参考
+No build approval is needed: this is plain JavaScript with no `prepare` script.
+To verify the composed layer before starting:
 
-- DSH 官方仓库：https://github.com/deepseek-ai/deepseek-harness
-- DSH 文档站：https://deepseek-harness.github.io/deepseek-harness/
+```sh
+dsh --profile web --dump-config
+```
+
+## Compatibility
+
+- DSH: `^0.2.1-rc.2` (see `engines.dsh`)
+- Installed DSH when this skeleton was created: `0.2.1-rc.2`
+
+## Development
+
+```sh
+node --check index.js     # syntax check
+npm pack --dry-run        # verify the packed file list
+```
+
+Capabilities will be added after the concrete requirements are defined. Follow
+the workflow in `dsh-plugin-dev` skill (`C:\Users\mason\.dsh\skills\dsh-plugin-dev\SKILL.md`).
+
+## Reference
+
+- DSH repository: https://github.com/deepseek-ai/deepseek-harness
+- DSH docs: https://deepseek-harness.github.io/deepseek-harness/
