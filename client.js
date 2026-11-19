@@ -106,10 +106,28 @@ window.__ModuleLoader__.load({
       '[data-enkeep-activity-action]:hover:not(:disabled),[data-enkeep-activity-toggle]:hover{',
       'background:var(--dsw-alias-bg-layer-3);}',
       '[data-enkeep-activity-action]:disabled{opacity:.45;cursor:default;}',
-      '[data-enkeep-activity-item]{display:flex;align-items:center;gap:8px;width:100%;',
-      'text-align:left;border:0;border-radius:6px;padding:5px 8px;',
-      'background:transparent;color:inherit;cursor:pointer;font-size:12px;}',
+      '[data-enkeep-activity-item]{display:flex;align-items:center;width:100%;',
+      'border-radius:6px;color:inherit;font-size:12px;}',
       '[data-enkeep-activity-item]:hover{background:var(--dsw-alias-bg-layer-3);}',
+      // Main button owns the label/dot/badge; flex:1 keeps label ellipsis working.
+      '[data-enkeep-activity-main]{display:flex;align-items:center;gap:8px;',
+      'flex:1 1 auto;min-width:0;text-align:left;border:0;border-radius:6px;',
+      'padding:5px 8px;background:transparent;color:inherit;cursor:pointer;',
+      'font-size:12px;}',
+      // Pinned row: subtle accent bar on the left + tinted background.
+      '[data-enkeep-activity-item][data-enkeep-pinned]{',
+      'box-shadow:inset 2px 0 0 var(--dsw-alias-state-business-primary, #4c8bf5);',
+      'background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 8%, transparent);}',
+      // Row action buttons: hidden until hover / keyboard focus within the row.
+      '[data-enkeep-activity-row-actions]{display:flex;align-items:center;gap:1px;',
+      'flex:none;padding-right:4px;opacity:0;transition:opacity .12s ease;}',
+      '[data-enkeep-activity-item]:hover [data-enkeep-activity-row-actions],',
+      '[data-enkeep-activity-item]:focus-within [data-enkeep-activity-row-actions]{opacity:1;}',
+      '[data-enkeep-row-action]{border:0;background:transparent;color:inherit;cursor:pointer;',
+      'width:20px;height:20px;border-radius:5px;padding:0;',
+      'display:inline-flex;align-items:center;justify-content:center;}',
+      '[data-enkeep-row-action]:hover{background:var(--dsw-alias-bg-layer-4);}',
+      '[data-enkeep-row-action][data-enkeep-row-pin]{color:var(--dsw-alias-state-business-primary, #4c8bf5);}',
       // 四种标识：运行中(绿+脉冲环) / 完成未看(橙点) / 完成已看(灰点) /
       // 当前对话(叠加高亮行 + “当前”徽标；当前通常也是运行中，故双重标识)。
       '[data-enkeep-dot]{flex:0 0 auto;width:8px;height:8px;border-radius:50%;',
@@ -130,6 +148,29 @@ window.__ModuleLoader__.load({
       'border-radius:6px;color:var(--dsw-alias-state-business-primary, #4c8bf5);',
       'border:1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 45%, transparent);}',
       '[data-enkeep-activity-label]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      // Confirm / rename dialogs (centred over the viewport, above the bar).
+      '[data-enkeep-modal-mask]{position:fixed;inset:0;z-index:1000;',
+      'display:flex;align-items:center;justify-content:center;',
+      'background:rgba(0,0,0,.45);pointer-events:auto;}',
+      '[data-enkeep-modal]{width:min(360px,calc(100vw - 32px));',
+      'display:flex;flex-direction:column;gap:12px;padding:16px;',
+      'border:1px solid var(--dsw-alias-border-l3);border-radius:10px;',
+      'background:var(--dsw-alias-bg-layer-2, #202124);color:inherit;',
+      'box-shadow:0 12px 40px rgba(0,0,0,.5);font-size:13px;}',
+      '[data-enkeep-modal] strong{font-size:14px;}',
+      '[data-enkeep-modal] p{margin:0;line-height:1.6;opacity:.85;}',
+      '[data-enkeep-rename-input]{width:100%;box-sizing:border-box;padding:7px 9px;',
+      'border:1px solid var(--dsw-alias-border-l3);border-radius:6px;',
+      'background:var(--dsw-alias-bg-layer-1, #1a1b1c);color:inherit;font-size:13px;}',
+      '[data-enkeep-modal-actions]{display:flex;justify-content:flex-end;gap:8px;}',
+      '[data-enkeep-modal-actions] button{border:1px solid var(--dsw-alias-border-l3);',
+      'background:transparent;color:inherit;cursor:pointer;border-radius:6px;',
+      'padding:5px 12px;font-size:12px;}',
+      '[data-enkeep-modal-actions] button:hover{background:var(--dsw-alias-bg-layer-3);}',
+      '[data-enkeep-modal-actions] [data-enkeep-modal-primary]{',
+      'background:var(--dsw-alias-state-business-primary, #4c8bf5);',
+      'border-color:var(--dsw-alias-state-business-primary, #4c8bf5);color:#fff;}',
+      '[data-enkeep-modal-actions] [data-enkeep-modal-primary]:hover{filter:brightness(1.08);}',
     ].join('\n')
 
     function installActivityStyle() {
@@ -301,10 +342,11 @@ window.__ModuleLoader__.load({
       const title = row && row.title && row.title.trim()
       return title ? (dir ? dir + ': ' + title : title) : (dir || (row && row.displayTitle) || id)
     }
-    function selectActivity(sessions, statuses, archivedIds, hours, now) {
+    function selectActivity(sessions, statuses, archivedIds, hours, now, pinnedSet) {
       const byId = (sessions && sessions.byId) || {}
       const ids = (sessions && sessions.ids) || []
       const archived = archivedIds || new Set()
+      const pinned = pinnedSet || new Set()
       const winMs = hours * 3600 * 1000
       // 当前对话：与工作区侧栏高亮同一数据源——mainView 保留引用数 > 0。
       let current = undefined
@@ -322,19 +364,25 @@ window.__ModuleLoader__.load({
         const running = (st && st.running !== undefined) ? st.running : row.running
         const unread = !!(st && st.completionUnread === true)
         const recent = (now - (row.updatedAt || 0)) <= winMs
-        if (!running && !unread && !recent) continue
+        const isPinned = pinned.has(id)
+        // 归档/subagent/blank 已在上面剔除（归档优先：即使置顶也不显示）。
+        // 置顶会话锁定常显：忽略超时/运行/未读，始终保留。
+        if (!running && !unread && !recent && !isPinned) continue
         // state 决定圆点：运行中 > 完成未看 > 完成已看(未超时)。
         // current 是叠加维度（当前通常也是运行中），单独标记。
         const state = running ? 'ongoing' : (unread ? 'unread' : 'idle')
-        out.push({ id, state, current: id === current, label: sessionLabel(row, id) })
+        // rawTitle is the actual session title (no directory prefix) — used by the
+        // rename dialog so editing never bakes "dir: " into the stored title.
+        const rawTitle = (row.title && row.title.trim()) || row.displayTitle || id
+        out.push({ id, state, current: id === current, pinned: isPinned, label: sessionLabel(row, id), rawTitle })
       }
-      // 按 SessionId 字典序——id 是不可变的（session-<uuid>），顺序固定，
-      // 点击切换或聊天（更新 updatedAt）都不会让列表重排，真正稳定。
-      // 说明：创建时间未暴露给列表行（仅 Host 线协议头有 createdAt），
-      // 且 ids 顺序本身是 updatedAt 降序（聊天会变），id 排序是唯一可用的
-      // 不可变稳定键；顺序看似随机但恒定，符合要求。current 只作高亮/徽标，不排序。
-      out.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-      return out.slice(0, MAX_ITEMS)
+      // 排序分两段：置顶区在前，普通区在后；各自按 SessionId 字典序——
+      // id 是不可变的（session-<uuid>），顺序固定，点击/聊天都不会让其重排。
+      // current 只作高亮/徽标，不排序。
+      const byIdOrder = (a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+      const pinnedRows = out.filter((r) => r.pinned).sort(byIdOrder)
+      const normalRows = out.filter((r) => !r.pinned).sort(byIdOrder)
+      return pinnedRows.concat(normalRows).slice(0, MAX_ITEMS)
     }
 
     // --- Sidebar icon component (module-scope stable function) ---------------
@@ -368,6 +416,16 @@ window.__ModuleLoader__.load({
         h('circle', { cx: 7, cy: 12, r: 1.6, fill: 'currentColor', stroke: 'none' }))
       if (kind === 'collapse') return h('svg', common, h('path', { d: 'M4 10l4-4 4 4' }))
       if (kind === 'expand') return h('svg', common, h('path', { d: 'M4 6l4 4 4-4' }))
+      // Row action icons (rename / archive / pin / unpin) — same visual box.
+      if (kind === 'rename') return h('svg', common,
+        h('path', { d: 'M11.5 2.5l2 2L6 12l-2.5.5L4 10z' }), h('path', { d: 'M10 4l2 2' }))
+      if (kind === 'archive') return h('svg', common,
+        h('path', { d: 'M2.5 4.5h11v2h-11z' }), h('path', { d: 'M3.5 6.5v6h9v-6' }), h('path', { d: 'M6.5 9h3' }))
+      if (kind === 'pin') return h('svg', common,
+        h('path', { d: 'M6 2h4l-1 4 2 2v1H5V8l2-2z' }), h('path', { d: 'M8 9v4' }))
+      if (kind === 'unpin') return h('svg', common,
+        h('path', { d: 'M6 2h4l-1 4 2 2v1H5V8l2-2z' }), h('path', { d: 'M8 9v4' }),
+        h('path', { d: 'M2.5 13.5l11-11', stroke: 'currentColor' }))
       return null
     }
 
@@ -409,7 +467,22 @@ window.__ModuleLoader__.load({
       try { localStorage.setItem(ACTIVITY_POS_KEY, JSON.stringify(p)) } catch (e) { /* ignore */ }
     }
 
-    function ActivityBar({ form, openSession, newSession, addWorkspace, openSettings, useSessions, useSessionStatus, useWorkspaces }) {
+    // Enkeep-private pinned SessionId set (drives activity-bar pinned zone + lock).
+    // Independent of the official registry pin set: we only call official pin/unpin.
+    const ACTIVITY_PINNED_KEY = 'dsh.enkeep.activity.pinned.v1'
+    function readPinned() {
+      try {
+        const raw = localStorage.getItem(ACTIVITY_PINNED_KEY)
+        const v = raw ? JSON.parse(raw) : null
+        if (Array.isArray(v)) return v.filter((x) => typeof x === 'string')
+      } catch (e) { /* ignore */ }
+      return []
+    }
+    function writePinned(ids) {
+      try { localStorage.setItem(ACTIVITY_PINNED_KEY, JSON.stringify(ids)) } catch (e) { /* ignore */ }
+    }
+
+    function ActivityBar({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession, useSessions, useSessionStatus, useWorkspaces }) {
       const [collapsed, setCollapsed] = React.useState(false)
       const [, setTick] = React.useState(0)
       const [hours, setHours] = React.useState(24)
@@ -418,6 +491,12 @@ window.__ModuleLoader__.load({
       const [pos, setPos] = React.useState(readActivityPos)
       const [dragging, setDragging] = React.useState(false)
       const dragRef = React.useRef(null)
+      // Pinned set + dialogs (row actions).
+      const [pinned, setPinnedState] = React.useState(readPinned)
+      const [confirmArchive, setConfirmArchive] = React.useState(null) // { id, title }
+      const [renameTarget, setRenameTarget] = React.useState(null) // { id, title }
+      const [renameDraft, setRenameDraft] = React.useState('')
+      const setPinned = (ids) => { setPinnedState(ids); writePinned(ids) }
 
       // Run a header action with a shared busy guard (ref: immune to rapid double-clicks).
       const runAction = (fn) => async () => {
@@ -486,13 +565,75 @@ window.__ModuleLoader__.load({
         writeActivityPos(zero)
       }
 
+      // --- Row actions: pin / archive / rename ---
+      // Debounce entry points: official calls are fire-and-forget (busyRef is
+      // released synchronously), so a timestamp guard stops rapid re-clicks from
+      // issuing duplicate pin/archive/rename calls. Dialog confirm buttons use
+      // busyRef only (they are one-shot and unmount on action).
+      const lastRowActionRef = React.useRef({ key: '', at: 0 })
+      const rowActionGuard = (key) => {
+        const t = Date.now()
+        const last = lastRowActionRef.current
+        if (busyRef.current) return false
+        if (last.key === key && t - last.at < 300) return false
+        lastRowActionRef.current = { key, at: t }
+        return true
+      }
+      // Pin is a paired action: always call the official service AND update our
+      // private pinned set. Failures on the official side are non-fatal (warn).
+      const togglePin = (id) => {
+        if (!rowActionGuard('pin:' + id)) return
+        const isPinned = pinned.indexOf(id) !== -1
+        busyRef.current = true
+        setBusy(true)
+        try {
+          const official = isPinned ? unpinSession : pinSession
+          if (typeof official === 'function') {
+            try { Promise.resolve(official(id)).catch((err) => console.warn('[enkeep] official pin/unpin failed', err)) }
+            catch (err) { console.warn('[enkeep] official pin/unpin failed', err) }
+          }
+          setPinned(isPinned ? pinned.filter((x) => x !== id) : [id].concat(pinned.filter((x) => x !== id)))
+        } finally { busyRef.current = false; setBusy(false) }
+      }
+      const askArchive = (id, title) => { if (rowActionGuard('archive:' + id)) setConfirmArchive({ id, title }) }
+      const confirmArchiveAction = () => {
+        const target = confirmArchive
+        setConfirmArchive(null)
+        if (!target || typeof archiveSession !== 'function') return
+        if (busyRef.current) return
+        busyRef.current = true
+        setBusy(true)
+        try { Promise.resolve(archiveSession(target.id)).catch((err) => console.warn('[enkeep] archive failed', err)) }
+        catch (err) { console.warn('[enkeep] archive failed', err) }
+        finally { busyRef.current = false; setBusy(false) }
+      }
+      const askRename = (id, title) => {
+        if (!rowActionGuard('rename:' + id)) return
+        setRenameTarget({ id, title })
+        setRenameDraft(title || '')
+      }
+      const confirmRenameAction = () => {
+        const target = renameTarget
+        const next = renameDraft.trim()
+        setRenameTarget(null)
+        if (!target || !next || next === (target.title || '')) return
+        if (typeof renameSession !== 'function') return
+        if (busyRef.current) return
+        busyRef.current = true
+        setBusy(true)
+        try { Promise.resolve(renameSession(target.id, next)).catch((err) => console.warn('[enkeep] rename failed', err)) }
+        catch (err) { console.warn('[enkeep] rename failed', err) }
+        finally { busyRef.current = false; setBusy(false) }
+      }
+
       const sessions = useSessions ? useSessions((s) => s) : undefined
       const statuses = useSessionStatus ? useSessionStatus((s) => s) : undefined
       const ws = useWorkspaces ? useWorkspaces((s) => s) : undefined
       const archived = ws && ws.archivedSessionIds ? new Set(ws.archivedSessionIds) : new Set()
-      const items = selectActivity(sessions, statuses, archived, hours, Date.now())
+      const pinnedSet = new Set(pinned)
+      const items = selectActivity(sessions, statuses, archived, hours, Date.now(), pinnedSet)
 
-      if (items.length === 0) return null
+      if (items.length === 0 && !confirmArchive && !renameTarget) return null
 
       return h('div', {
         'data-enkeep-activity-bar': true,
@@ -540,17 +681,65 @@ window.__ModuleLoader__.load({
               'aria-label': collapsed ? '展开活动区' : '收起活动区',
             }, h(HeaderIcon, { kind: collapsed ? 'expand' : 'collapse' })))),
         !collapsed && items.map((it) =>
-          h('button', {
-            type: 'button',
+          h('div', {
             key: it.id,
             'data-enkeep-activity-item': true,
+            'data-enkeep-pinned': it.pinned ? true : undefined,
             'data-enkeep-current': it.current ? true : undefined,
-            title: it.label + (it.current ? '（当前对话）' : ''),
-            onClick: () => openSession(it.id),
           },
-            h('span', { 'data-enkeep-dot': it.state }),
-            h('span', { 'data-enkeep-activity-label': true }, it.label),
-            it.current ? h('span', { 'data-enkeep-current-badge': true }, '当前') : null)))
+            h('button', {
+              type: 'button',
+              'data-enkeep-activity-main': true,
+              title: it.label + (it.current ? '（当前对话）' : ''),
+              onClick: () => openSession(it.id),
+            },
+              h('span', { 'data-enkeep-dot': it.state }),
+              h('span', { 'data-enkeep-activity-label': true }, it.label),
+              it.current ? h('span', { 'data-enkeep-current-badge': true }, '当前') : null),
+            h('div', { 'data-enkeep-activity-row-actions': true },
+              h('button', {
+                type: 'button',
+                'data-enkeep-row-action': true,
+                title: '重命名',
+                'aria-label': '重命名',
+                onClick: (e) => { e.stopPropagation(); askRename(it.id, it.rawTitle) },
+              }, h(HeaderIcon, { kind: 'rename' })),
+              h('button', {
+                type: 'button',
+                'data-enkeep-row-action': true,
+                title: '归档',
+                'aria-label': '归档',
+                onClick: (e) => { e.stopPropagation(); askArchive(it.id, it.label) },
+              }, h(HeaderIcon, { kind: 'archive' })),
+              h('button', {
+                type: 'button',
+                'data-enkeep-row-action': true,
+                'data-enkeep-row-pin': it.pinned ? true : undefined,
+                title: it.pinned ? '取消置顶' : '置顶',
+                'aria-label': it.pinned ? '取消置顶' : '置顶',
+                onClick: (e) => { e.stopPropagation(); togglePin(it.id) },
+              }, h(HeaderIcon, { kind: it.pinned ? 'unpin' : 'pin' }))))),
+        // Dialogs live inside the bar root so pointer-events:auto applies.
+        confirmArchive ? h('div', { 'data-enkeep-modal-mask': true, onClick: () => setConfirmArchive(null) },
+          h('div', { 'data-enkeep-modal': true, onClick: (e) => e.stopPropagation() },
+            h('strong', null, '归档会话'),
+            h('p', null, '确定归档会话「' + confirmArchive.title + '」？归档后可在工作区取消归档。'),
+            h('div', { 'data-enkeep-modal-actions': true },
+              h('button', { type: 'button', onClick: () => setConfirmArchive(null) }, '取消'),
+              h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: confirmArchiveAction }, '确定归档')))) : null,
+        renameTarget ? h('div', { 'data-enkeep-modal-mask': true, onClick: () => setRenameTarget(null) },
+          h('div', { 'data-enkeep-modal': true, onClick: (e) => e.stopPropagation() },
+            h('strong', null, '重命名会话'),
+            h('input', {
+              'data-enkeep-rename-input': true,
+              value: renameDraft,
+              autoFocus: true,
+              onChange: (e) => setRenameDraft(e.target.value),
+              onKeyDown: (e) => { if (e.key === 'Enter') confirmRenameAction(); else if (e.key === 'Escape') setRenameTarget(null) },
+            }),
+            h('div', { 'data-enkeep-modal-actions': true },
+              h('button', { type: 'button', onClick: () => setRenameTarget(null) }, '取消'),
+              h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: confirmRenameAction }, '确定')))) : null)
     }
 
     // --- Common words / structured prompts (ported from dsh-wordbox, upgraded) --
@@ -1451,17 +1640,47 @@ window.__ModuleLoader__.load({
             if (layout && typeof layout.selectPanel === 'function') layout.selectPanel(PANEL_ID)
             else console.warn('[enkeep] layout.selectPanel unavailable; cannot open settings panel')
           }
+          // Row actions: official pin/unpin/archive are public uiWorkspace methods.
+          const pinSession = (id) => {
+            const uiWorkspace = get('uiWorkspace')
+            if (uiWorkspace && typeof uiWorkspace.pinSession === 'function') return uiWorkspace.pinSession(id)
+            console.warn('[enkeep] uiWorkspace.pinSession unavailable'); return undefined
+          }
+          const unpinSession = (id) => {
+            const uiWorkspace = get('uiWorkspace')
+            if (uiWorkspace && typeof uiWorkspace.unpinSession === 'function') return uiWorkspace.unpinSession(id)
+            console.warn('[enkeep] uiWorkspace.unpinSession unavailable'); return undefined
+          }
+          const archiveSession = (id) => {
+            const uiWorkspace = get('uiWorkspace')
+            if (uiWorkspace && typeof uiWorkspace.archiveSession === 'function') return uiWorkspace.archiveSession(id)
+            console.warn('[enkeep] uiWorkspace.archiveSession unavailable'); return undefined
+          }
+          // Rename uses the public low-level sessions.using(...).rename path —
+          // the official rename dialog trigger is an internal slot, not exposed.
+          const renameSession = async (id, title) => {
+            const sessionsSvc = get('sessions')
+            if (!sessionsSvc || typeof sessionsSvc.using !== 'function') {
+              console.warn('[enkeep] sessions service unavailable; cannot rename'); return
+            }
+            const result = await sessionsSvc.using(id, { source: 'workspaceOperation' }, (ref) => ref.binding.session.rename(title))
+            if (result && result.ok === false) throw new Error(result.error && result.error.message ? result.error.message : 'rename rejected')
+          }
           const stopOverlay = ctx.slots.inject('shell.overlay', () => ctx.slots.register({
             name: 'shell.overlay',
             id: 'dsh-enkeep.activity-bar',
             order: 100,
-            inject: () => ({ form, openSession, newSession, addWorkspace, openSettings }),
+            inject: () => ({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession }),
           }, (props) => h(ActivityBar, {
             form: props.form,
             openSession: props.openSession,
             newSession: props.newSession,
             addWorkspace: props.addWorkspace,
             openSettings: props.openSettings,
+            pinSession: props.pinSession,
+            unpinSession: props.unpinSession,
+            archiveSession: props.archiveSession,
+            renameSession: props.renameSession,
             useSessions: props.useSessions,
             useSessionStatus: props.useSessionStatus,
             useWorkspaces: props.useWorkspaces,
