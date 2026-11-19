@@ -273,13 +273,25 @@ window.__ModuleLoader__.load({
       '.ekeep-w-addConfirm:hover:not(:disabled){border-color:var(--dsw-alias-border-l3)}',
       '.ekeep-w-addConfirm:disabled{opacity:.5;cursor:default}',
       '.ekeep-w-actions{flex:none;display:flex;align-items:center;gap:6px;padding:2px 2px 2px}',
-      '.ekeep-w-add{height:24px;padding:0 8px;border:none;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:24px;cursor:pointer;margin-right:auto}',
+      '.ekeep-w-add{height:24px;padding:0 8px;border:none;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:24px;cursor:pointer}',
       '.ekeep-w-add:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.ekeep-w-modes{flex:none;display:inline-flex;align-items:center;gap:2px}',
       '.ekeep-w-mode{height:22px;padding:0 5px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:22px;cursor:pointer;outline:none}',
       '.ekeep-w-mode:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
       '.ekeep-w-mode:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
       '.ekeep-w-modeActive{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}',
+      // Skill quick-pick: an independent tab/section inside the word panel.
+      '.ekeep-w-views{flex:none;display:inline-flex;align-items:center;gap:2px;margin-right:auto}',
+      '.ekeep-w-view{height:22px;padding:0 8px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:22px;cursor:pointer;outline:none}',
+      '.ekeep-w-view:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
+      '.ekeep-w-view:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
+      '.ekeep-w-viewActive{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}',
+      '.ekeep-w-skillName{flex:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary);padding:7px 4px 7px 10px}',
+      '.ekeep-w-skillDesc{flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:20px;color:var(--dsw-alias-label-caption)}',
+      '.ekeep-w-fav{flex:none;height:24px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:22px;cursor:pointer}',
+      '.ekeep-w-fav:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.ekeep-w-fav:disabled{opacity:.5;cursor:default}',
+      '.ekeep-w-skillTools{flex:none;display:inline-flex;align-items:center;gap:4px}',
       // Settings-page editor (prefix ekeep-p-). Keyword single-line + body multi-line textarea.
       '.ekeep-p-wrap{display:flex;flex-direction:column;gap:8px;}',
       '.ekeep-p-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}',
@@ -1175,6 +1187,34 @@ window.__ModuleLoader__.load({
     }
     const wordStore = createWordStore()
 
+    // --- Skill quick-pick: read-only fetch of installed skills -------------
+    // All logic lives in enkeep itself (no skill-picker plugin, no fork). The
+    // host route is GET /dsh-enkeep-skills?cwd=… behind a custom header.
+    const SKILLS_URL = '/dsh-enkeep-skills'
+    const SKILLS_HEADER = 'x-dsh-enkeep-skills'
+    /**
+     * Fetch the skill list once. `signal` cancels an in-flight request so a
+     * closing/unmounting panel never writes state. Returns [] on any failure —
+     * skills are an additive convenience, never a blocker for common words.
+     */
+    async function fetchSkills(cwd, signal) {
+      try {
+        const q = typeof cwd === 'string' && cwd !== '' ? ('?cwd=' + encodeURIComponent(cwd)) : ''
+        const res = await fetch(SKILLS_URL + q, {
+          headers: { [SKILLS_HEADER]: '1' },
+          signal,
+        })
+        if (!res || !res.ok) return []
+        const data = await res.json()
+        if (!data || data.ok !== true || !Array.isArray(data.skills)) return []
+        return data.skills.filter((s) => s && typeof s.name === 'string' && s.name !== '')
+      } catch (err) {
+        if (err && err.name === 'AbortError') return []
+        console.warn('[enkeep] fetch skills failed', err)
+        return []
+      }
+    }
+
     // Subscribe helper: prefer React's native external-store hook when available;
     // the fallback works on any React 18 without that export.
     function useWordStore(store) {
@@ -1245,6 +1285,10 @@ window.__ModuleLoader__.load({
       const [open, setOpen] = React.useState(false)
       const [editing, setEditing] = React.useState(false)
       const [draftWord, setDraftWord] = React.useState('')
+      const [view, setView] = React.useState('words') // 'words' | 'skills' — panel-local, not persisted
+      const [skills, setSkills] = React.useState([])
+      const [skillsLoading, setSkillsLoading] = React.useState(false)
+      const [skillsRefresh, setSkillsRefresh] = React.useState(0)
       const state = useWordStore(wordStore)
       const draft = typeof useInput === 'function' ? (useInput((s) => (s === void 0 ? '' : s.draft)) ?? '') : ''
       const cwd = typeof useSessions === 'function'
@@ -1263,6 +1307,19 @@ window.__ModuleLoader__.load({
           inputActions.setDraft(base + sep + content)
         })
       }, [inputActions])
+
+      // Load skills only while the panel is open on the skill tab. Abort on
+      // close/tab-switch/cwd change so a late response never updates state.
+      React.useEffect(() => {
+        if (!open || view !== 'skills') return undefined
+        const ctrl = typeof AbortController === 'function' ? new AbortController() : null
+        let alive = true
+        setSkillsLoading(true)
+        fetchSkills(cwd, ctrl ? ctrl.signal : undefined).then((list) => {
+          if (alive) setSkills(list)
+        }).finally(() => { if (alive) setSkillsLoading(false) })
+        return () => { alive = false; if (ctrl) ctrl.abort() }
+      }, [open, view, cwd, skillsRefresh])
 
       // Panel positioning: read composer card rect, write ONLY panel's own style.
       const rootRef = React.useRef(null)
@@ -1321,6 +1378,21 @@ window.__ModuleLoader__.load({
       }
       const addToGlobal = (id) => wordStore.addToGlobal(id)
 
+      // A skill is "favorited" once a v2 prompt with content '/name ' exists.
+      // The trailing space mirrors the official picker: it delimits the gesture
+      // so typing immediately after the chip never merges into the skill name.
+      const skillContent = (name) => '/' + name + ' '
+      const isSkillFavorited = (name) => {
+        const content = skillContent(name)
+        return state.global.some((p) => p.content === content) ||
+          Object.values(state.projects).some((list) => list.some((p) => p.content === content))
+      }
+      const favoriteSkill = (name) => {
+        if (isSkillFavorited(name)) return
+        wordStore.upsert({ keyword: name, content: skillContent(name), useCount: 0 },
+          state.mode === 'global' ? 'global' : 'project', projectKey)
+      }
+
       const emptyText = state.mode === 'global' ? '还没有常用词，点击下方按钮添加'
         : state.mode === 'current' ? (projectKey === null ? '当前没有项目' : '当前项目还没有常用词')
           : '还没有任何常用词，点击下方按钮添加'
@@ -1338,7 +1410,7 @@ window.__ModuleLoader__.load({
           onClick: () => { if (open) setEditing(false); setOpen((v) => !v) },
         }, h(WordsTriggerIcon), chevron),
         open ? h('div', { ref: panelRef, className: 'ekeep-w-panel', role: 'listbox', 'aria-label': '常用词' },
-          editing ? h('div', { className: 'ekeep-w-addRow' },
+          view === 'words' ? (editing ? h('div', { className: 'ekeep-w-addRow' },
             h('input', {
               className: 'ekeep-w-addInput', autoFocus: true, value: draftWord,
               placeholder: '输入词或句子…',
@@ -1360,19 +1432,50 @@ window.__ModuleLoader__.load({
               alreadyGlobal: state.global.some((g) => g.content === p.content),
               onInsert: (id) => wordStore.insert(id),
               onRemove: removeWord, onAddToGlobal: addToGlobal,
-            }))),
+            })))) : null,
+          // Skill tab body (independent section; does not touch WORDS_MODES).
+          view === 'skills' ? (skillsLoading && skills.length === 0
+            ? h('div', { className: 'ekeep-w-empty' }, '正在读取技能…')
+            : skills.length === 0
+              ? h('div', { className: 'ekeep-w-empty' }, '没有找到可插入的技能（可在设置里检查技能目录）')
+              : h('ul', { className: 'ekeep-w-list' }, skills.map((s) => {
+                const faved = isSkillFavorited(s.name)
+                return h('li', { key: s.name, className: 'ekeep-w-row' },
+                  h('span', { className: 'ekeep-w-skillName', title: s.description || s.name }, '/' + s.name),
+                  s.description ? h('span', { className: 'ekeep-w-skillDesc', title: s.description }, s.description) : null,
+                  h('div', { className: 'ekeep-w-skillTools' },
+                    h('button', {
+                      type: 'button', className: 'ekeep-w-fav', disabled: faved,
+                      title: faved ? '已加入常用词' : '收藏为常用词（插入 /' + s.name + '）',
+                      onMouseDown: (e) => e.preventDefault(),
+                      onClick: () => favoriteSkill(s.name),
+                    }, faved ? '已收藏' : '＋收藏')))
+              }))
+          ) : null,
           h('div', { className: 'ekeep-w-actions' },
-            !editing ? h('button', {
+            h('div', { className: 'ekeep-w-views', role: 'group', 'aria-label': '面板分区' },
+              [['words', '常用词'], ['skills', '技能']].map(([value, label]) => h('button', {
+                key: value, type: 'button',
+                className: 'ekeep-w-view' + (view === value ? ' ekeep-w-viewActive' : ''),
+                'aria-pressed': view === value, title: label,
+                onMouseDown: (e) => e.preventDefault(),
+                onClick: () => { setEditing(false); setView(value) },
+              }, label))),
+            view === 'words' ? (!editing ? h('button', {
               type: 'button', className: 'ekeep-w-add',
               onMouseDown: (e) => e.preventDefault(), onClick: () => setEditing(true),
-            }, '＋ 添加') : null,
-            h('div', { className: 'ekeep-w-modes', role: 'group', 'aria-label': '显示范围' },
+            }, '＋ 添加') : null) : h('button', {
+              type: 'button', className: 'ekeep-w-add',
+              onMouseDown: (e) => e.preventDefault(),
+              onClick: () => setSkillsRefresh((n) => n + 1),
+            }, '↻ 刷新'),
+            view === 'words' ? h('div', { className: 'ekeep-w-modes', role: 'group', 'aria-label': '显示范围' },
               [['all', '全部'], ['global', '全局'], ['current', '当前']].map(([value, label]) => h('button', {
                 key: value, type: 'button',
                 className: 'ekeep-w-mode' + (state.mode === value ? ' ekeep-w-modeActive' : ''),
                 'aria-pressed': state.mode === value, title: label,
                 onMouseDown: (e) => e.preventDefault(), onClick: () => wordStore.setMode(value),
-              }, label)))
+              }, label))) : null
           )
         ) : null)
     }

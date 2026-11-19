@@ -17,7 +17,7 @@
  */
 
 import Schema from '@deepseek-ai/schemastery'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -51,6 +51,7 @@ export function apply(ctx, config) {
   })
 
   installWordRoutes(ctx)
+  installSkillRoutes(ctx)
 }
 
 // ---------------------------------------------------------------------------
@@ -298,4 +299,155 @@ function installWordRoutes(ctx) {
     }
     return ctx.webServer.register({ kind: 'prefix', path: '/dsh-enkeep-words', handler })
   }, 'enkeep: word routes')
+}
+
+// ---------------------------------------------------------------------------
+// Skill quick-pick (server side, READ-ONLY scan of installed skills)
+// ---------------------------------------------------------------------------
+// Mirrors `dsh-skill-filesystem`'s scan so the offered list matches what the
+// official `/` menu can actually load. Inserting a `/name` gesture for a skill
+// the provider hides/refuses is a silent no-op — the same trap skill-picker hit
+// in its issue #10, so every filter rule below is load-bearing.
+
+/** Client header for the skill route (same auth-gate model as the word route). */
+const SKILL_HEADER = 'x-dsh-enkeep-skills'
+const SKILL_ENTRY = 'SKILL.md'
+const SKILL_DISABLED_ENTRY = 'SKILL.md.disabled'
+/** Frontmatter keys the official provider rejects outright. */
+const LEGACY_INVOCATION_KEYS = ['disableModelInvocation', 'modelInvocable', 'userInvocable']
+
+function agentsHome() {
+  return process.env.DSH_AGENTS_HOME ?? path.join(os.homedir(), '.agents')
+}
+
+/** The YAML frontmatter block of a SKILL.md body, or undefined when absent. */
+function frontmatterBlock(content) {
+  const m = typeof content === 'string' ? content.match(/^---\r?\n([\s\S]*?)\r?\n---/) : null
+  return m ? m[1] : undefined
+}
+
+/** Flat YAML subset: `key: value` lines, quotes stripped, empty values dropped. */
+function parseFrontmatter(content) {
+  const block = frontmatterBlock(content)
+  if (block === undefined) return {}
+  const out = {}
+  for (const line of block.split(/\r?\n/)) {
+    const kv = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/)
+    if (!kv) continue
+    const value = kv[2].trim().replace(/^["']|["']$/g, '')
+    if (value !== '') out[kv[1]] = value
+  }
+  return out
+}
+
+/** Presence check that also sees a bare `key:` (parseFrontmatter drops empties). */
+function hasFrontmatterKey(content, key) {
+  const block = frontmatterBlock(content)
+  if (block === undefined) return false
+  return block.split(/\r?\n/).some((line) => {
+    const kv = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/)
+    return kv !== null && kv[1] === key
+  })
+}
+
+/** YAML booleans plus case-insensitive true/false, yes/no, on/off, 1/0. */
+function frontmatterBoolean(meta, key) {
+  if (!Object.hasOwn(meta, key)) return undefined
+  const v = meta[key]
+  if (v === 1 || v === '1') return true
+  if (v === 0 || v === '0') return false
+  if (typeof v === 'string') {
+    switch (v.toLowerCase()) {
+      case 'true': case 'yes': case 'on': return true
+      case 'false': case 'no': case 'off': return false
+    }
+  }
+  throw new TypeError(`frontmatter field "${key}" must be a boolean`)
+}
+
+/** Whether a scanned skill is user-invocable (mirrors official parseInvocationPolicy). */
+function isUserInvocableSkill(meta, content) {
+  for (const legacy of LEGACY_INVOCATION_KEYS) {
+    if (hasFrontmatterKey(content, legacy)) return false
+  }
+  try {
+    return frontmatterBoolean(meta, 'user-invocable') !== false // omitted → permitted
+  } catch {
+    return false
+  }
+}
+
+/** Follow symlinks/junctions: a skill root may itself be a link to another repo. */
+async function isDirectoryEntry(dirPath) {
+  try { return (await stat(dirPath)).isDirectory() } catch { return false }
+}
+
+/** Scan one directory into the map; never throws. Higher-priority dirs are scanned later and overwrite. */
+async function scanSkillsDirInto(map, dir) {
+  let entries
+  try { entries = await readdir(dir, { withFileTypes: true }) } catch { return }
+  for (const entry of entries) {
+    const skillDir = path.join(dir, entry.name)
+    if (!(await isDirectoryEntry(skillDir))) continue
+    let content
+    try { content = await readFile(path.join(skillDir, SKILL_ENTRY), 'utf8') }
+    catch { continue } // missing SKILL.md (incl. only SKILL.md.disabled) → provider ignores
+    const meta = parseFrontmatter(content)
+    if (!isUserInvocableSkill(meta, content)) continue
+    const name = String(meta.name ?? entry.name).trim()
+    if (name === '') continue
+    map.set(name, { name, description: String(meta.description ?? '') })
+  }
+}
+
+/**
+ * Scan the four roots the official provider uses, low → high priority so that
+ * project-level skills override same-named user-level ones. No writes.
+ * @param {string} cwd - active session workspace root (undefined = user level only).
+ */
+export async function scanSkills(cwd) {
+  const map = new Map()
+  await scanSkillsDirInto(map, path.join(agentsHome(), 'skills'))          // user agents (lowest)
+  await scanSkillsDirInto(map, path.join(dshHome(), 'skills'))             // user
+  if (typeof cwd === 'string' && cwd !== '') {
+    await scanSkillsDirInto(map, path.join(cwd, '.agents', 'skills'))       // project agents
+    await scanSkillsDirInto(map, path.join(cwd, '.dsh', 'skills'))          // project (highest)
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
+}
+
+async function handleSkills(req, res, url) {
+  const json = (code, payload) => {
+    res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify(payload))
+  }
+  if (req.method !== 'GET') { json(405, { ok: false, error: 'method not allowed' }); return }
+  if (req.headers[SKILL_HEADER] !== '1') { json(403, { ok: false, error: 'missing client header' }); return }
+  let cwd = url.searchParams.get('cwd') ?? ''
+  if (cwd !== '' && !(path.isAbsolute(cwd) && await isDirectoryEntry(cwd))) cwd = ''
+  try {
+    json(200, { ok: true, skills: await scanSkills(cwd) })
+  } catch (err) {
+    json(500, { ok: false, error: String(err?.message ?? err) })
+  }
+}
+
+/** Mount the read-only skill route, same capability probe as the word route. */
+function installSkillRoutes(ctx) {
+  ctx.effect(() => {
+    if (ctx.webServer?.register === undefined) {
+      console.error('[enkeep] webServer 服务不可用：技能快捷插入未启用。')
+      return undefined
+    }
+    const handler = async (req, res) => {
+      const url = new URL(req.url ?? '/', 'http://dsh')
+      if (url.pathname === '/dsh-enkeep-skills') {
+        await handleSkills(req, res, url)
+        return
+      }
+      res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ ok: false, error: 'not found' }))
+    }
+    return ctx.webServer.register({ kind: 'prefix', path: '/dsh-enkeep-skills', handler })
+  }, 'enkeep: skill routes')
 }

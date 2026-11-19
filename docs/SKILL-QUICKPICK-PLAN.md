@@ -13,7 +13,8 @@
 > 关键技术前提（已核查，非猜测）：
 > - DSH 识别的是用户消息里的 `/技能名` 手势（`dsh-skill-picker` 的插入代码为 `setDraft(draft + sep + '/' + skill.name + ' ')`）。
 > - 技能名 `skill.name` 来自 `SKILL.md` frontmatter 的 `name` 字段，缺省为技能目录名。
-> - 官方技能目录是两个：`$DSH_HOME/skills`（fallback `~/.dsh/skills`）与 `$DSH_AGENTS_HOME/skills`（fallback `~/.agents/skills`）。
+> - 官方技能目录是**四个**（与 `dsh-skill-filesystem` provider 一致）：用户级 `~/.agents/skills`、`~/.dsh/skills`，项目级 `<cwd>/.agents/skills`、`<cwd>/.dsh/skills`；低优先级先扫、高优先级同名覆盖（用户级 < 项目级）。
+> - 过滤规则（缺一即失效）：legacy invocation keys（`disableModelInvocation` / `modelInvocable` / `userInvocable` 任一出现即整条丢弃）、`user-invocable` 布尔假值（`false/no/off/0`，大小写不敏感）、`SKILL.md.disabled` 的条目跳过（官方 provider 不加载，插入手势会静默失效）。
 > - enkeep 已有宿主端只读路由范式（`ctx.webServer.register({ kind:'prefix', path:'/dsh-enkeep-words', handler })`）与自定义头校验（`x-dsh-enkeep-words: 1`），可直接照搬。
 > - enkeep 词库 v2 条目为 `{ id, keyword, content, useCount }`，插入统一走 `wordStore.insert(id)` → 注册的 inserter → `inputActions.setDraft(content)`。
 
@@ -25,10 +26,11 @@
 宿主 index.js                          前端 client.js
 +-------------------------+            +-------------------------------------+
 | GET /dsh-enkeep-skills  |  fetch     | CommonWords 面板                     |
-|  - 扫两个技能目录        | <--------> |  - 「技能」来源：列出 name/description|
+|  - 扫四个技能目录        | <--------> |  - 「技能」独立分区：列 name/desc   |
 |  - 读 SKILL.md 的       |  JSON      |  - 「＋收藏」→ wordStore.upsert      |
-|    name/description     |            |      { keyword, content:'/name' }   |
-|  - 过滤 user-invocable  |            |  - 点击条目 → wordStore.insert       |
+|    name/description     |            |      { keyword, content:'/name ' }  |
+|  - legacy keys / 布尔   |            |  - 点击条目 → wordStore.insert       |
+|    假值 / disabled 过滤 |            |  - 独立分区，不进 WORDS_MODES        |
 +-------------------------+            +-------------------------------------+
                                                 |
                                        common inserter → setDraft('/name ')
@@ -37,7 +39,7 @@
 ```
 
 - **数据流单向、只读**：技能扫描只读文件，绝不写/改/删任何技能文件；收藏只写 enkeep 自己的词库。
-- **数据模型**：技能收藏后就是一条普通 v2 Prompt，`content = '/技能名'`。**不引入 `kind:'skill'` 之类的新类型字段**——这样现有的三路合并、持久化、置顶、频率排序、跨端共享全部零改动。
+- **数据模型**：技能收藏后就是一条普通 v2 Prompt，`content = '/技能名 '`（带尾空格，分隔手势与后续输入）。**不引入 `kind:'skill'` 之类的新类型字段**——这样现有的三路合并、持久化、置顶、频率排序、跨端共享全部零改动。
 - **网关**：与词库路由一致，新增安全头 `x-dsh-enkeep-skills: 1`（插件路由在鉴权门之外，自定义头是那道门）。
 - **失败降级**：扫描失败 / 路由不可用时，前端静默显示空技能列表，常用词本身照常可用。
 
@@ -47,28 +49,28 @@
 
 ### 功能
 在 `index.js` 增加：
-1. `scanSkills()`：扫描两个技能目录，返回 `[{ name, description }]`。
-2. `GET /dsh-enkeep-skills`：带安全头的只读 JSON 路由。
+1. `scanSkills(cwd)`：扫描**四个**技能目录，返回 `[{ name, description }]`。
+2. `GET /dsh-enkeep-skills?cwd=…`：带安全头的只读 JSON 路由，`cwd` 来自当前 session，用于项目级目录。
 
 ### 技术
-- `node:fs/promises` 的 `readdir`（`withFileTypes`）/`readFile`；`node:path`；`process.env.DSH_HOME` / `DSH_AGENTS_HOME`，fallback `os.homedir()`。
+- `node:fs/promises` 的 `readdir`（`withFileTypes`）/`readFile`/`stat`；`node:path`；`process.env.DSH_HOME` / `DSH_AGENTS_HOME`，fallback `os.homedir()`。
+- 四个目录按**低→高优先级**顺序扫，用 `Map` 按 name 去重（后写覆盖，高优先级胜出）：① `~/.agents/skills`（用户级，最低）② `~/.dsh/skills`（用户级）③ `<cwd>/.agents/skills`（项目级）④ `<cwd>/.dsh/skills`（项目级，最高）。跟随 symlink/junction（`stat` 判目录）。
 - frontmatter 解析：正则 `^---\r?\n([\s\S]*?)\r?\n---` 取块，按行拆 `key: value`（YAML 平坦子集），去引号。
-- 过滤：`user-invocable: false` 的条目跳过（与官方 `parseInvocationPolicy` 语义一致，大小写不敏感，只认显式 `false`）。
-- 路由：复用 `ctx.webServer.register({ kind:'prefix', path:'/dsh-enkeep-skills', handler })`；非 `GET` 返回 405，缺安全头返回 403，异常返回 500 JSON。
+- **过滤（缺一即失效）**：① legacy keys `disableModelInvocation`/`modelInvocable`/`userInvocable` 任一作为 key 出现 → 整条丢弃；② `user-invocable` 布尔假值（`false/no/off/0`，大小写不敏感，解析异常也丢弃，缺省视为可调用）；③ 仅存在 `SKILL.md.disabled`（官方 provider 不加载）→ 丢弃；④ 空 name 跳过。
+- 路由：复用 `ctx.webServer.register({ kind:'prefix', path:'/dsh-enkeep-skills', handler })`；`cwd` 从 query 取并校验（字符串、绝对路径、存在的目录），非 `GET` 返回 405，缺安全头返回 403，异常返回 500 JSON。
 
 ### 完成标准
-- `scanSkills()` 对不存在的目录返回 `[]`，不抛错。
-- 技能名取 `frontmatter.name || 目录名`，去首尾空白；空 name 跳过。
-- 返回列表按 `name` 字典序排序（稳定、可预期）。
-- 路由只含 `GET` 一种方法，无写操作。
+- `scanSkills(cwd)` 对不存在的目录返回 `[]`，不抛错；cwd 为空时只扫两个用户级目录。
+- 四条过滤规则逐条生效；同名技能只保留最高优先级的一条；列表按 name 排序稳定。
+- 路由只读、无写操作，安全头与状态码正确。
 
 ### 验收
 - `node --check index.js` 通过。
-- 单元脚本（mock fs）：造两个临时目录 + 若干 `SKILL.md`（含 name / 无 name / `user-invocable: false` / legacy key），断言返回列表只包含预期项、排序正确。
-- 端到端：启动 dsh web，`curl` 带/不带安全头各请求一次，断言 200 / 403；响应是 `{ ok:true, skills:[...] }`。
+- 单元脚本（mock fs）：造四个临时目录（用户级2+项目级2）+ 若干 `SKILL.md`，覆盖 含name/无name/`user-invocable: false|no|0`/legacy key/仅`.disabled`/项目级覆盖用户级同名/symlink技能；断言返回内容、去重、排序全对。
+- 端到端：启动 dsh web（**必须重启**，见步骤五），`curl` 带/不带安全头各请求一次，断言 200 / 403；响应是 `{ ok:true, skills:[...] }`。
 
 ### 成功标准
-返回列表与官方 `/` 补全可见的用户技能集一致（同一套目录与过滤规则）；只读、无副作用、无新依赖。
+返回列表与官方 `/` 补全可见的技能集一致（同一套目录、优先级与过滤规则）；只读、无副作用、无新依赖。
 
 ---
 
@@ -76,7 +78,7 @@
 
 ### 功能
 在 `client.js` 增加一个轻量技能数据源（hook 或模块级 state）：
-- 面板打开时 `fetch('/dsh-enkeep-skills', { headers: { 'x-dsh-enkeep-skills':'1' } })`。
+- 面板打开时 `fetch('/dsh-enkeep-skills?cwd=' + encodeURIComponent(cwd||''), { headers: { 'x-dsh-enkeep-skills':'1' } })`，`cwd` 取当前 session 的 workspace 根目录（项目级技能所需）。
 - 维护 `skills` 列表 state、加载中 / 失败标志。
 - 提供手动「刷新」入口（重新 fetch），应对新装技能。
 
@@ -102,23 +104,25 @@
 ## 3. 步骤三：面板内「技能」来源与收藏
 
 ### 功能
-在 `CommonWords` 面板里新增一个「技能」来源（与现有「全部/全局/当前」显示范围并存，不改造它们）：
-- 列出 `skills` 的 `name`（用现有 `keyword` 风格的短标签显示）与 `description`（作为 title 或副文本）。
-- 每条右侧一个「＋收藏」按钮：调用 `wordStore.upsert({ keyword: <name 或 description 前缀>, content: '/'+name, useCount: 0 }, 'global'|'project', projectKey)`。
-- 已收藏的技能显示「已收藏」态（按 `content === '/'+name` 判断），可去重点击。
+在 `CommonWords` 面板里新增一个**独立的「技能」分区**——它是一个 tab/视图切换（面板内新增 `view` state：`'words' | 'skills'`），**不进 `WORDS_MODES` 枚举、不写 localStorage**；现有「全部/全局/当前」显示范围保持不动：
+- 列出 `skills` 的 `name` 与 `description`（title 提示全文）。
+- 每条右侧一个「＋收藏」按钮：调用 `wordStore.upsert({ keyword: name, content: '/'+name+' ', useCount: 0 }, 'global'|'project', projectKey)`（尾空格分隔手势与后续输入）。
+- 已收藏态按词库中存在 `content === '/'+name+' '` 的条目判断，显示「已收藏」并禁用重复收藏。
+- 分区顶部提供「刷新技能」按钮（重新 fetch）。
 
 ### 技术
 - 复用 `wordStore.upsert` / `getSnapshot`；**id 由 store 自动生成**（稳定唯一），不手工拼 id。
-- 显示样式复用 `ekeep-w-*` 类（`ekeep-w-list` / `ekeep-w-row` 等），只新增必要的「技能」来源标识与收藏按钮样式，沿用现有主题 token。
-- 收藏目标桶跟随当前 `state.mode`（global → 全局，current → 当前项目，all → 全局），与现有「＋添加」行为一致。
+- 显示样式复用 `ekeep-w-*` 类（`ekeep-w-list` / `ekeep-w-row` 等），只新增必要的「技能」分区标识与收藏按钮样式，沿用现有主题 token。
+- 收藏目标桶跟随当前 `state.mode`（global → 全局，current/all → 当前项目），与现有「＋添加」行为完全一致。
+- **不新增搜索框**（用户决定）：技能列表按 name 排序直接滚动浏览。
 
 ### 完成标准
-- 收藏点击后，词库立即多出一条 `content:'/name'` 的 Prompt；重复点击同一技能不产生第二条。
+- 收藏点击后，词库立即多出一条 `content:'/name '`（带尾空格）的 Prompt；重复点击同一技能不产生第二条。
 - 收藏后切到「全部/全局」视图能看到该条，并出现在快捷提示条的候选中（受 `quickPromptCount` 限制）。
 - 不修改 `normalizePrompt` / `mergePrompts` / 同步协议（因为没引入新字段）。
 
 ### 验收
-- mock `wordStore.upsert`：断言写入参数 `content === '/技能名'`、`keyword` 非空、`useCount === 0`。
+- mock `wordStore.upsert`：断言写入参数 `content === '/技能名 '`（带尾空格）、`keyword` 非空、`useCount === 0`。
 - 收藏两条不同技能 → 列表中两条、content 各不相同；重复收藏同一条 → 仍只有一条。
 - 回归测试：词库 v2 合并（base/theirs/mine 三路）、重置计数、全局/项目模式切换全部仍通过。
 
@@ -134,7 +138,7 @@
 - 用户补齐正文并发送，DSH 原生加载对应技能。
 
 ### 技术
-- **不写新的插入代码**：`QuickPrompts` 与 `CommonWords` 已各自注册 inserter，`wordStore.insert` 会把 `content`（即 `/name`）追加到 draft（现有 `base + sep + content` 逻辑，sep 保证词间空格）。
+- **不写新的插入代码**：`QuickPrompts` 与 `CommonWords` 已各自注册 inserter，`wordStore.insert` 会把 `content`（即 `/name `，含尾空格）追加到 draft（现有 `base + sep + content` 逻辑，sep 保证词间空格）。
 - 需要确认 `inputActions.setDraft` 对「以 `/` 开头的纯手势文本」不转义、不拦截（参照 skill-picker 的成功先例：它就是这么做且已上线可用）。
 
 ### 完成标准
@@ -145,7 +149,7 @@
 ### 验收
 - mock `inputActions.setDraft`：断言收到文本包含 `/技能名 `；连续两次点击得到 `'/a /b '` 形态。
 - 全量回归：常用词增删改、快捷栏 top-N、设置页、活动区（置顶/归档/重命名）、宽度隔离全部通过。
-- **真实浏览器验收（用户侧）**：刷新页面 → 打开「词」面板 → 收藏一个技能 → 点 chip → 输入框出现 `/技能名` → 发送 → 确认技能内容随消息加载。（本环境无 DOM/截图能力，此项需用户确认。）
+- **真实浏览器验收（用户侧）**：**先重启 dsh web**（宿主路由新增）→ 刷新页面 → 打开「词」面板 → 切到「技能」分区 → 收藏一个技能 → 点 chip → 输入框出现 `/技能名` → 发送 → 确认技能内容随消息加载。（本环境无 DOM/截图能力，此项需用户确认。）
 
 ### 成功标准
 端到端「选技能 → 插入 → 发送 → 技能加载」真实跑通；现有功能零回退。
@@ -171,7 +175,8 @@
 - `HEAD == origin/main`。
 
 ### 成功标准
-换机 / 升级 DSH 后，功能仍可用（因为全部是 enkeep 自己的代码，不依赖任何 fork 或插件）；用户刷新页面即可使用，无需重启 dsh。
+换机 / 升级 DSH 后，功能仍可用（因为全部是 enkeep 自己的代码，不依赖任何 fork 或插件）。
+**注意：本方案在宿主端 `index.js` 新增了路由，必须重启 dsh web（VSCode 里 `DeepSeek Harness: 重启 dsh web`）后路由才注册；之后再刷新页面即可使用。** 仅刷新页面会出现 `404 /dsh-enkeep-skills`、技能列表为空。
 
 ---
 
