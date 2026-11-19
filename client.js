@@ -140,12 +140,17 @@ window.__ModuleLoader__.load({
       'display:inline-flex;align-items:center;justify-content:center;}',
       '[data-enkeep-row-action]:hover{background:var(--dsw-alias-bg-layer-4);}',
       '[data-enkeep-row-action][data-enkeep-row-pin]{color:var(--dsw-alias-state-business-primary, #4c8bf5);}',
-      // 四种标识：运行中(绿+脉冲环) / 完成未看(橙点) / 完成已看(灰点) /
+      // 五种标识：运行中(绿实心+脉冲环) / 等待互动(琥珀空心环,静态) /
+      // 完成未看(橙实心+光环) / 完成已看(灰实心) /
       // 当前对话(叠加高亮行 + “当前”徽标；当前通常也是运行中，故双重标识)。
+      // 等待互动用空心环而非实心点，与同为琥珀色的「完成未看」在形状上区分，
+      // 避免颜色混淆；且不带 animation——脉冲专属于真正在运行的 ongoing。
       '[data-enkeep-dot]{flex:0 0 auto;width:8px;height:8px;border-radius:50%;',
       'background:var(--dsw-alias-text-4, #8b8b8b);}',
       '[data-enkeep-dot="ongoing"]{background:var(--dsw-alias-state-success-primary, #35b37e);',
       'animation:enkeep-activity-pulse 1.6s ease-in-out infinite;}',
+      '[data-enkeep-dot="awaiting"]{background:transparent;box-sizing:border-box;',
+      'border:2px solid var(--dsw-alias-state-warn-label, #d89614);}',
       '[data-enkeep-dot="unread"]{background:var(--dsw-alias-state-warn-label, #d89614);',
       'box-shadow:0 0 0 2px color-mix(in srgb, var(--dsw-alias-state-warn-label, #d89614) 25%, transparent);}',
       '[data-enkeep-dot="idle"]{background:var(--dsw-alias-text-4, #8b8b8b);}',
@@ -388,18 +393,21 @@ window.__ModuleLoader__.load({
         const st = (statuses && statuses.get) ? statuses.get(id) : undefined
         const running = (st && st.running !== undefined) ? st.running : row.running
         const unread = !!(st && st.completionUnread === true)
+        // 等待用户交互（审批/提问/计划审查）是独立于 running 的官方状态：
+        // 此时会话语义上已暂停，但 running 可能仍为 true。漏读它会误画绿脉冲。
+        const awaiting = !!(st && st.pendingInteraction !== undefined)
         const recent = (now - (row.updatedAt || 0)) <= winMs
         const isPinned = pinned.has(id)
         // 归档/subagent/blank 已在上面剔除（归档优先：即使置顶也不显示）。
-        // 置顶会话锁定常显：忽略超时/运行/未读，始终保留。
-        if (!running && !unread && !recent && !isPinned) continue
-        // state 决定圆点：运行中 > 完成未看 > 完成已看(未超时)。
+        // 置顶会话锁定常显；等待互动的会话即使超时也保留——两者都需要用户注意。
+        if (!running && !unread && !recent && !isPinned && !awaiting) continue
+        // state 决定圆点：等待互动 > 运行中 > 完成未看 > 完成已看(未超时)。
         // current 是叠加维度（当前通常也是运行中），单独标记。
-        const state = running ? 'ongoing' : (unread ? 'unread' : 'idle')
+        const state = awaiting ? 'awaiting' : (running ? 'ongoing' : (unread ? 'unread' : 'idle'))
         // rawTitle is the actual session title (no directory prefix) — used by the
         // rename dialog so editing never bakes "dir: " into the stored title.
         const rawTitle = (row.title && row.title.trim()) || row.displayTitle || id
-        out.push({ id, state, current: id === current, pinned: isPinned, label: sessionLabel(row, id), rawTitle })
+        out.push({ id, state, awaiting, current: id === current, pinned: isPinned, label: sessionLabel(row, id), rawTitle })
       }
       // 排序分两段：置顶区在前，普通区在后；各自按 SessionId 字典序——
       // id 是不可变的（session-<uuid>），顺序固定，点击/聊天都不会让其重排。
@@ -767,7 +775,7 @@ window.__ModuleLoader__.load({
             h('button', {
               type: 'button',
               'data-enkeep-activity-main': true,
-              title: it.label + (it.current ? '（当前对话）' : ''),
+              title: it.label + (it.awaiting ? '（等待互动）' : '') + (it.current ? '（当前对话）' : ''),
               onClick: () => openSession(it.id),
             },
               h('span', { 'data-enkeep-dot': it.state }),
