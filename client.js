@@ -526,21 +526,27 @@ window.__ModuleLoader__.load({
       const dragRef = React.useRef(null)
       // Pinned set + dialogs (row actions).
       const [pinned, setPinnedState] = React.useState(readPinned)
+      // Synchronous mirror of the committed pinned list. React state updates are
+      // async, so two pin clicks landing in one render frame would both read the
+      // stale `pinned` snapshot and overwrite each other (only one stayed pinned).
+      // Every mutation goes through commitPinned, which keeps ref + state + disk
+      // in lockstep; reads that must see the latest value use pinnedRef.current.
+      const pinnedRef = React.useRef(pinned)
       const [confirmArchive, setConfirmArchive] = React.useState(null) // { id, title }
       const [stopArchiveTarget, setStopArchiveTarget] = React.useState(null) // { id, title } — running session
       const [archiveError, setArchiveError] = React.useState(null) // string
       const [renameTarget, setRenameTarget] = React.useState(null) // { id, title }
       const [renameDraft, setRenameDraft] = React.useState('')
       const [renameError, setRenameError] = React.useState('')
-      const setPinned = (ids) => { setPinnedState(ids); writePinned(ids) }
+      const commitPinned = (ids) => {
+        pinnedRef.current = ids
+        setPinnedState(ids)
+        writePinned(ids)
+      }
       // Archive success must drop the id from our pinned set even across a slow
-      // async call — functional update avoids a stale `pinned` closure.
+      // async call — read the ref so a stale `pinned` closure can't resurrect it.
       const unpinLocal = (id) => {
-        setPinnedState((prev) => {
-          const next = prev.filter((x) => x !== id)
-          writePinned(next)
-          return next
-        })
+        commitPinned(pinnedRef.current.filter((x) => x !== id))
       }
       // Official marks a running-session archive refusal with a stable error name
       // + rpc code (bundles don't share error-class identity) — detect by field.
@@ -634,9 +640,14 @@ window.__ModuleLoader__.load({
       }
       // Pin is a paired action: always call the official service AND update our
       // private pinned set. Failures on the official side are non-fatal (warn).
+      // Use the synchronous ref as the source of truth so rapid clicks on two
+      // different rows in one render frame both accumulate instead of the second
+      // clobbering the first with a stale snapshot.
       const togglePin = (id) => {
         if (!rowActionGuard('pin:' + id)) return
-        const isPinned = pinned.indexOf(id) !== -1
+        const prev = pinnedRef.current
+        const isPinned = prev.indexOf(id) !== -1
+        const next = isPinned ? prev.filter((x) => x !== id) : [id].concat(prev.filter((x) => x !== id))
         busyRef.current = true
         setBusy(true)
         try {
@@ -645,7 +656,7 @@ window.__ModuleLoader__.load({
             try { Promise.resolve(official(id)).catch((err) => console.warn('[enkeep] official pin/unpin failed', err)) }
             catch (err) { console.warn('[enkeep] official pin/unpin failed', err) }
           }
-          setPinned(isPinned ? pinned.filter((x) => x !== id) : [id].concat(pinned.filter((x) => x !== id)))
+          commitPinned(next)
         } finally { busyRef.current = false; setBusy(false) }
       }
       const askArchive = (id, title) => {
