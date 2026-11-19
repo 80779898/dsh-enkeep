@@ -312,9 +312,10 @@ function installWordRoutes(ctx) {
 /** Client header for the skill route (same auth-gate model as the word route). */
 const SKILL_HEADER = 'x-dsh-enkeep-skills'
 const SKILL_ENTRY = 'SKILL.md'
-const SKILL_DISABLED_ENTRY = 'SKILL.md.disabled'
 /** Frontmatter keys the official provider rejects outright. */
 const LEGACY_INVOCATION_KEYS = ['disableModelInvocation', 'modelInvocable', 'userInvocable']
+/** Public skill-name grammar (dsh-skill's SKILL_NAME regex). */
+const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 function agentsHome() {
   return process.env.DSH_AGENTS_HOME ?? path.join(os.homedir(), '.agents')
@@ -326,34 +327,30 @@ function frontmatterBlock(content) {
   return m ? m[1] : undefined
 }
 
-/** Flat YAML subset: `key: value` lines, quotes stripped, empty values dropped. */
+/**
+ * Parse the YAML frontmatter subset. Returns null when frontmatter is absent —
+ * the official provider drops such a skill entirely. `keys` records presence
+ * even for bare `key:` lines, which legacy-key rejection needs.
+ */
 function parseFrontmatter(content) {
   const block = frontmatterBlock(content)
-  if (block === undefined) return {}
-  const out = {}
+  if (block === undefined) return null
+  const data = {}
+  const keys = {}
   for (const line of block.split(/\r?\n/)) {
     const kv = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/)
     if (!kv) continue
+    keys[kv[1]] = true
     const value = kv[2].trim().replace(/^["']|["']$/g, '')
-    if (value !== '') out[kv[1]] = value
+    if (value !== '') data[kv[1]] = value
   }
-  return out
-}
-
-/** Presence check that also sees a bare `key:` (parseFrontmatter drops empties). */
-function hasFrontmatterKey(content, key) {
-  const block = frontmatterBlock(content)
-  if (block === undefined) return false
-  return block.split(/\r?\n/).some((line) => {
-    const kv = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/)
-    return kv !== null && kv[1] === key
-  })
+  return { data, keys }
 }
 
 /** YAML booleans plus case-insensitive true/false, yes/no, on/off, 1/0. */
-function frontmatterBoolean(meta, key) {
-  if (!Object.hasOwn(meta, key)) return undefined
-  const v = meta[key]
+function frontmatterBoolean(data, key) {
+  if (!Object.hasOwn(data, key)) return undefined
+  const v = data[key]
   if (v === 1 || v === '1') return true
   if (v === 0 || v === '0') return false
   if (typeof v === 'string') {
@@ -365,16 +362,32 @@ function frontmatterBoolean(meta, key) {
   throw new TypeError(`frontmatter field "${key}" must be a boolean`)
 }
 
-/** Whether a scanned skill is user-invocable (mirrors official parseInvocationPolicy). */
-function isUserInvocableSkill(meta, content) {
+/**
+ * Validate one SKILL.md like the official provider and return its
+ * user-invocable entry, or null when the provider would drop it. Mirroring this
+ * prevents offering a `/name` gesture the composer would silently refuse.
+ */
+function parseSkill(content) {
+  const fm = parseFrontmatter(content)
+  if (fm === null) return null
+  const { data, keys } = fm
   for (const legacy of LEGACY_INVOCATION_KEYS) {
-    if (hasFrontmatterKey(content, legacy)) return false
+    if (keys[legacy]) return null
   }
+  let userInvocable
   try {
-    return frontmatterBoolean(meta, 'user-invocable') !== false // omitted → permitted
+    // Validate both keys: a malformed value drops the whole skill upstream,
+    // even when it only concerns the model-facing surface.
+    frontmatterBoolean(data, 'disable-model-invocation')
+    userInvocable = frontmatterBoolean(data, 'user-invocable') !== false
   } catch {
-    return false
+    return null
   }
+  if (!userInvocable) return null
+  const name = typeof data.name === 'string' ? data.name.trim() : ''
+  const description = typeof data.description === 'string' ? data.description.trim() : ''
+  if (name === '' || description === '' || !SKILL_NAME.test(name)) return null
+  return { name, description }
 }
 
 /** Follow symlinks/junctions: a skill root may itself be a link to another repo. */
@@ -382,21 +395,28 @@ async function isDirectoryEntry(dirPath) {
   try { return (await stat(dirPath)).isDirectory() } catch { return false }
 }
 
-/** Scan one directory into the map; never throws. Higher-priority dirs are scanned later and overwrite. */
-async function scanSkillsDirInto(map, dir) {
+/**
+ * Scan one root into the map (never throws). Both official layouts are
+ * supported: directory bundle `<name>/SKILL.md` and flat file `<name>.md`.
+ * Higher-priority roots are scanned later and overwrite the same name.
+ */
+async function scanSkillsDirInto(map, dir, { skipSystem = false } = {}) {
   let entries
   try { entries = await readdir(dir, { withFileTypes: true }) } catch { return }
   for (const entry of entries) {
-    const skillDir = path.join(dir, entry.name)
-    if (!(await isDirectoryEntry(skillDir))) continue
+    if (skipSystem && entry.name === '.system') continue
+    const full = path.join(dir, entry.name)
     let content
-    try { content = await readFile(path.join(skillDir, SKILL_ENTRY), 'utf8') }
-    catch { continue } // missing SKILL.md (incl. only SKILL.md.disabled) → provider ignores
-    const meta = parseFrontmatter(content)
-    if (!isUserInvocableSkill(meta, content)) continue
-    const name = String(meta.name ?? entry.name).trim()
-    if (name === '') continue
-    map.set(name, { name, description: String(meta.description ?? '') })
+    if (await isDirectoryEntry(full)) {
+      try { content = await readFile(path.join(full, SKILL_ENTRY), 'utf8') }
+      catch { continue } // no SKILL.md → provider ignores (incl. SKILL.md.disabled alone)
+    } else if (entry.name.endsWith('.md')) {
+      try { content = await readFile(full, 'utf8') } catch { continue }
+    } else {
+      continue
+    }
+    const skill = parseSkill(content)
+    if (skill !== null) map.set(skill.name, skill)
   }
 }
 
@@ -408,7 +428,7 @@ async function scanSkillsDirInto(map, dir) {
 export async function scanSkills(cwd) {
   const map = new Map()
   await scanSkillsDirInto(map, path.join(agentsHome(), 'skills'))          // user agents (lowest)
-  await scanSkillsDirInto(map, path.join(dshHome(), 'skills'))             // user
+  await scanSkillsDirInto(map, path.join(dshHome(), 'skills'), { skipSystem: true }) // user
   if (typeof cwd === 'string' && cwd !== '') {
     await scanSkillsDirInto(map, path.join(cwd, '.agents', 'skills'))       // project agents
     await scanSkillsDirInto(map, path.join(cwd, '.dsh', 'skills'))          // project (highest)

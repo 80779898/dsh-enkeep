@@ -121,10 +121,11 @@ window.__ModuleLoader__.load({
       'flex:1 1 auto;min-width:0;text-align:left;border:0;border-radius:6px;',
       'padding:5px 8px;background:transparent;color:inherit;cursor:pointer;',
       'font-size:12px;}',
-      // Pinned row: subtle accent bar on the left + tinted background.
+      // Pinned row: ONLY a leading accent stripe. No full-row background —
+      // that used to blend with the current-session row's 12% blue background
+      // (and was overridden by it anyway when a row was both pinned+current).
       '[data-enkeep-activity-item][data-enkeep-pinned]{',
-      'box-shadow:inset 2px 0 0 var(--dsw-alias-state-business-primary, #4c8bf5);',
-      'background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 8%, transparent);}',
+      'box-shadow:inset 2px 0 0 var(--dsw-alias-state-business-primary, #4c8bf5);}',
       // Row action buttons: display:none by default so they take NO horizontal
       // space — the label (flex:1) owns the full row and shows untruncated.
       // Official workspace rows do exactly this: .rowActions{display:none},
@@ -273,7 +274,7 @@ window.__ModuleLoader__.load({
       '.ekeep-w-addConfirm:hover:not(:disabled){border-color:var(--dsw-alias-border-l3)}',
       '.ekeep-w-addConfirm:disabled{opacity:.5;cursor:default}',
       '.ekeep-w-actions{flex:none;display:flex;align-items:center;gap:6px;padding:2px 2px 2px}',
-      '.ekeep-w-add{height:24px;padding:0 8px;border:none;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:24px;cursor:pointer}',
+      '.ekeep-w-add{height:24px;padding:0 8px;border:none;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:24px;cursor:pointer;margin-right:auto}',
       '.ekeep-w-add:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.ekeep-w-modes{flex:none;display:inline-flex;align-items:center;gap:2px}',
       '.ekeep-w-mode{height:22px;padding:0 5px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:22px;cursor:pointer;outline:none}',
@@ -281,7 +282,7 @@ window.__ModuleLoader__.load({
       '.ekeep-w-mode:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
       '.ekeep-w-modeActive{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}',
       // Skill quick-pick: an independent tab/section inside the word panel.
-      '.ekeep-w-views{flex:none;display:inline-flex;align-items:center;gap:2px;margin-right:auto}',
+      '.ekeep-w-views{flex:none;display:inline-flex;align-items:center;gap:2px}',
       '.ekeep-w-view{height:22px;padding:0 8px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:22px;cursor:pointer;outline:none}',
       '.ekeep-w-view:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
       '.ekeep-w-view:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
@@ -1453,14 +1454,9 @@ window.__ModuleLoader__.load({
               }))
           ) : null,
           h('div', { className: 'ekeep-w-actions' },
-            h('div', { className: 'ekeep-w-views', role: 'group', 'aria-label': '面板分区' },
-              [['words', '常用词'], ['skills', '技能']].map(([value, label]) => h('button', {
-                key: value, type: 'button',
-                className: 'ekeep-w-view' + (view === value ? ' ekeep-w-viewActive' : ''),
-                'aria-pressed': view === value, title: label,
-                onMouseDown: (e) => e.preventDefault(),
-                onClick: () => { setEditing(false); setView(value) },
-              }, label))),
+            // The add/refresh button keeps its original left position via
+            // margin-right:auto; views+modes stay grouped on the right so the
+            // pre-existing words-panel layout is unchanged.
             view === 'words' ? (!editing ? h('button', {
               type: 'button', className: 'ekeep-w-add',
               onMouseDown: (e) => e.preventDefault(), onClick: () => setEditing(true),
@@ -1469,6 +1465,14 @@ window.__ModuleLoader__.load({
               onMouseDown: (e) => e.preventDefault(),
               onClick: () => setSkillsRefresh((n) => n + 1),
             }, '↻ 刷新'),
+            h('div', { className: 'ekeep-w-views', role: 'group', 'aria-label': '面板分区' },
+              [['words', '常用词'], ['skills', '技能']].map(([value, label]) => h('button', {
+                key: value, type: 'button',
+                className: 'ekeep-w-view' + (view === value ? ' ekeep-w-viewActive' : ''),
+                'aria-pressed': view === value, title: label,
+                onMouseDown: (e) => e.preventDefault(),
+                onClick: () => { setEditing(false); setView(value) },
+              }, label))),
             view === 'words' ? h('div', { className: 'ekeep-w-modes', role: 'group', 'aria-label': '显示范围' },
               [['all', '全部'], ['global', '全局'], ['current', '当前']].map(([value, label]) => h('button', {
                 key: value, type: 'button',

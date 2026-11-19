@@ -29,8 +29,8 @@
 |  - 扫四个技能目录        | <--------> |  - 「技能」独立分区：列 name/desc   |
 |  - 读 SKILL.md 的       |  JSON      |  - 「＋收藏」→ wordStore.upsert      |
 |    name/description     |            |      { keyword, content:'/name ' }  |
-|  - legacy keys / 布尔   |            |  - 点击条目 → wordStore.insert       |
-|    假值 / disabled 过滤 |            |  - 独立分区，不进 WORDS_MODES        |
+|  - legacy keys / 布尔   |            |  - 收藏后走常用词/快捷条插入          |
+|    假值 / 必填校验过滤 |            |  - 独立分区，不进 WORDS_MODES        |
 +-------------------------+            +-------------------------------------+
                                                 |
                                        common inserter → setDraft('/name ')
@@ -56,17 +56,18 @@
 - `node:fs/promises` 的 `readdir`（`withFileTypes`）/`readFile`/`stat`；`node:path`；`process.env.DSH_HOME` / `DSH_AGENTS_HOME`，fallback `os.homedir()`。
 - 四个目录按**低→高优先级**顺序扫，用 `Map` 按 name 去重（后写覆盖，高优先级胜出）：① `~/.agents/skills`（用户级，最低）② `~/.dsh/skills`（用户级）③ `<cwd>/.agents/skills`（项目级）④ `<cwd>/.dsh/skills`（项目级，最高）。跟随 symlink/junction（`stat` 判目录）。
 - frontmatter 解析：正则 `^---\r?\n([\s\S]*?)\r?\n---` 取块，按行拆 `key: value`（YAML 平坦子集），去引号。
-- **过滤（缺一即失效）**：① legacy keys `disableModelInvocation`/`modelInvocable`/`userInvocable` 任一作为 key 出现 → 整条丢弃；② `user-invocable` 布尔假值（`false/no/off/0`，大小写不敏感，解析异常也丢弃，缺省视为可调用）；③ 仅存在 `SKILL.md.disabled`（官方 provider 不加载）→ 丢弃；④ 空 name 跳过。
+- **官方两种布局都支持**：目录 bundle `<name>/SKILL.md` 与扫描根顶层的平铺文件 `<name>.md`（不递归嵌套 `**/SKILL.md`）。
+- **过滤（缺一即失效，逐条对齐官方 provider）**：① legacy keys `disableModelInvocation`/`modelInvocable`/`userInvocable` 任一作为 key 出现 → 整条丢弃；② `user-invocable` 布尔假值（`false/no/off/0`，大小写不敏感，解析异常也丢弃，缺省视为可调用）→ 排除；③ `disable-model-invocation` 值非法 → 整条丢弃（只有 `true` 影响模型面，不排除用户调用）；④ 无 frontmatter、`name`/`description` 缺失或空、或 `name` 不匹配 `^[a-z0-9]+(?:-[a-z0-9]+)*$` → 丢弃；⑤ 仅存在 `SKILL.md.disabled`（官方不加载）→ 丢弃；⑥ 用户级 `~/.dsh/skills` 下的 `.system` 目录跳过。
 - 路由：复用 `ctx.webServer.register({ kind:'prefix', path:'/dsh-enkeep-skills', handler })`；`cwd` 从 query 取并校验（字符串、绝对路径、存在的目录），非 `GET` 返回 405，缺安全头返回 403，异常返回 500 JSON。
 
 ### 完成标准
-- `scanSkills(cwd)` 对不存在的目录返回 `[]`，不抛错；cwd 为空时只扫两个用户级目录。
-- 四条过滤规则逐条生效；同名技能只保留最高优先级的一条；列表按 name 排序稳定。
+- `scanSkills(cwd)` 对不存在的目录返回 `[]`，不抛错；cwd 为空时只扫两个用户级目录；目录 bundle 与平铺 `.md` 都能识别。
+- 上述六条过滤规则逐条生效；同名技能只保留最高优先级的一条；列表按 name 排序稳定。
 - 路由只读、无写操作，安全头与状态码正确。
 
 ### 验收
 - `node --check index.js` 通过。
-- 单元脚本（mock fs）：造四个临时目录（用户级2+项目级2）+ 若干 `SKILL.md`，覆盖 含name/无name/`user-invocable: false|no|0`/legacy key/仅`.disabled`/项目级覆盖用户级同名/symlink技能；断言返回内容、去重、排序全对。
+- 单元脚本（mock fs）：造四个临时目录（用户级2+项目级2）+ 若干 `SKILL.md`/平铺 `.md`，覆盖 含name/无name/无description/无frontmatter/非法name/`user-invocable: false|no|0`/legacy key/非法布尔/仅`.disabled`/`.system`目录/项目级覆盖用户级同名/symlink技能；断言返回内容、去重、排序全对。
 - 端到端：启动 dsh web（**必须重启**，见步骤五），`curl` 带/不带安全头各请求一次，断言 200 / 403；响应是 `{ ok:true, skills:[...] }`。
 
 ### 成功标准
