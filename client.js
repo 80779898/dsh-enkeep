@@ -250,19 +250,23 @@ window.__ModuleLoader__.load({
       '.ekeep-p-dup{font-size:12px;color:var(--dsw-alias-state-warn-label,#d89614);}',
       '.ekeep-p-empty{font-size:12px;color:var(--dsw-alias-label-tertiary);padding:8px 0;}',
       // Settings panel shell: side tab bar + full-width pane + close button.
-      '.ekeep-set-root{display:flex;flex-direction:column;width:100%;min-height:60vh;box-sizing:border-box;}',
+      '.ekeep-set-root{display:flex;flex-direction:column;width:100%;height:100%;min-height:0;box-sizing:border-box;}',
       '.ekeep-set-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0 12px;}',
       '.ekeep-set-title{font-size:16px;font-weight:600;color:var(--dsw-alias-label-primary);}',
       '.ekeep-set-close{flex:none;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:16px;line-height:1;cursor:pointer;}',
       '.ekeep-set-close:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
       '.ekeep-set-close:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none;}',
-      '.ekeep-set-body{display:flex;flex-direction:row;gap:16px;width:100%;min-height:0;flex:1;}',
+      '.ekeep-set-body{display:flex;flex-direction:row;gap:16px;width:100%;min-height:0;flex:1;overflow:hidden;}',
       '.ekeep-set-tabs{flex:0 0 auto;display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:112px;padding-right:12px;border-right:1px solid var(--dsw-alias-border-l2);}',
       '.ekeep-set-tab{display:block;width:100%;text-align:left;padding:8px 12px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:18px;cursor:pointer;white-space:nowrap;}',
       '.ekeep-set-tab:hover{background:var(--dsw-alias-interactive-bg-hover);}',
       '.ekeep-set-tabActive{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2);font-weight:600;}',
       '.ekeep-set-tab:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none;}',
-      '.ekeep-set-pane{flex:1 1 auto;min-width:0;width:100%;}',
+      '.ekeep-set-pane{flex:1 1 auto;min-width:0;min-height:0;width:100%;display:flex;flex-direction:column;}',
+      // In the center panel the prompt editor fills the remaining height and its
+      // list scrolls inside the page instead of being capped at 60vh.
+      '.ekeep-set-pane>.ekeep-p-wrap{flex:1 1 auto;min-height:0;}',
+      '.ekeep-set-pane>.ekeep-p-wrap>.ekeep-p-list{flex:1 1 auto;min-height:0;max-height:none;}',
     ].join('\n')
 
     function installWordsStyle() {
