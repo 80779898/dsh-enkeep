@@ -6,3 +6,4 @@
         showLauncher: true
         activityWindowHours: 24
         showCommonWords: true
+        quickPromptCount: 6

@@ -146,14 +146,26 @@ window.__ModuleLoader__.load({
     const CURRENT_STYLE_ID = 'enkeep-current'
     const CURRENT_CSS = [
       '[data-enkeep-composer-current]{',
-      'display:flex;justify-content:flex-start;',
+      'display:flex;justify-content:flex-start;align-items:center;gap:6px;',
       'width:100%;max-width:var(--dsh-composer-card-max-width,800px);margin:0 auto;}',
       '[data-enkeep-current-chip]{',
-      'display:inline-flex;align-items:center;max-width:100%;',
+      'display:inline-flex;align-items:center;max-width:100%;flex:none;',
       'padding:3px 10px;font-size:12px;line-height:18px;',
       'border:1px solid var(--dsw-alias-border-l3);border-radius:999px;',
       'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-text-1);}',
       '[data-enkeep-current-label]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      // High-frequency quick-access row: single line, horizontal scroll, never wraps
+      // and never writes chat-width variables (width isolation).
+      '[data-enkeep-quick]{display:flex;align-items:center;gap:4px;',
+      'min-width:0;flex:1 1 auto;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;}',
+      '[data-enkeep-quick]::-webkit-scrollbar{height:4px;}',
+      '[data-enkeep-quick]::-webkit-scrollbar-thumb{background:var(--dsw-alias-border-l3);border-radius:4px;}',
+      '[data-enkeep-quick-item]{flex:0 0 auto;max-width:170px;overflow:hidden;text-overflow:ellipsis;',
+      'white-space:nowrap;padding:3px 9px;font-size:12px;line-height:18px;',
+      'border:1px solid var(--dsw-alias-border-l3);border-radius:999px;',
+      'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-text-2);cursor:pointer;}',
+      '[data-enkeep-quick-item]:hover{border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-text-1);}',
+      '[data-enkeep-quick-item]:focus-visible{outline:2px solid var(--dsw-alias-border-l3);outline-offset:-2px;}',
     ].join('\n')
 
     function installCurrentStyle() {
@@ -211,6 +223,32 @@ window.__ModuleLoader__.load({
       '.ekeep-w-mode:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
       '.ekeep-w-mode:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
       '.ekeep-w-modeActive{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}',
+      // Settings-page editor (prefix ekeep-p-). Keyword single-line + body multi-line textarea.
+      '.ekeep-p-wrap{display:flex;flex-direction:column;gap:8px;}',
+      '.ekeep-p-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}',
+      '.ekeep-p-btn{height:26px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-size:12px;cursor:pointer;}',
+      '.ekeep-p-btn:hover:not(:disabled){border-color:var(--dsw-alias-border-l3)}',
+      '.ekeep-p-btn:disabled{opacity:.5;cursor:default}',
+      '.ekeep-p-btnPrimary{background:var(--dsw-alias-state-business-primary,#4c8bf5);color:#fff;border-color:transparent;}',
+      '.ekeep-p-count{font-size:12px;color:var(--dsw-alias-label-tertiary);}',
+      '.ekeep-p-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:320px;overflow-y:auto;}',
+      '.ekeep-p-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;}',
+      '.ekeep-p-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}',
+      '.ekeep-p-kw{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.ekeep-p-prev{font-size:12px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.ekeep-p-uses{flex:none;font-size:11px;color:var(--dsw-alias-label-tertiary);}',
+      '.ekeep-p-acts{flex:none;display:flex;align-items:center;gap:4px;}',
+      '.ekeep-p-mini{height:22px;padding:0 7px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;cursor:pointer;}',
+      '.ekeep-p-mini:hover{background:var(--dsw-alias-interactive-bg-hover);}',
+      '.ekeep-p-miniDanger:hover{color:var(--dsw-alias-state-error-primary);}',
+      '.ekeep-p-edit{display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;}',
+      '.ekeep-p-input,.ekeep-p-textarea{box-sizing:border-box;width:100%;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5;outline:none;resize:vertical;}',
+      '.ekeep-p-input{height:30px;}',
+      '.ekeep-p-textarea{min-height:96px;max-height:320px;}',
+      '.ekeep-p-input:focus,.ekeep-p-textarea:focus{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
+      '.ekeep-p-fieldlabel{font-size:12px;color:var(--dsw-alias-label-secondary);}',
+      '.ekeep-p-dup{font-size:12px;color:var(--dsw-alias-state-warn-label,#d89614);}',
+      '.ekeep-p-empty{font-size:12px;color:var(--dsw-alias-label-tertiary);padding:8px 0;}',
     ].join('\n')
 
     function installWordsStyle() {
@@ -311,19 +349,23 @@ window.__ModuleLoader__.load({
       return null
     }
 
-    // Current-session chip rendered above the composer input. `useSessions`
-    // (root) and `sessionId` (session scope) are standard props auto-injected
-    // into every conversation.input.dock entry — no service inject needed.
-    // Plain label only: no "当前" badge, no dropdown, not clickable.
-    function CurrentSessionBar({ useSessions, sessionId }) {
-      if (!sessionId || !useSessions) return null
-      const row = useSessions((s) => (s && s.byId) ? s.byId[sessionId] : undefined)
-      if (!row) return null
-      const label = sessionLabel(row, sessionId)
-      if (!label) return null
-      return h('div', { 'data-enkeep-composer-current': true },
-        h('div', { 'data-enkeep-current-chip': true, title: label },
-          h('span', { 'data-enkeep-current-label': true }, label)))
+    // Above-composer dock: current-session plain label (left) + high-frequency
+    // prompt buttons (right, same row). `useSessions`/`sessionId`/`useInput`/
+    // `inputActions` are standard props auto-injected into session-scope slots.
+    // `form` is supplied via inject so the quick row can read quickPromptCount.
+    function ComposerDock({ form, useSessions, sessionId, useInput, inputActions }) {
+      const [, force] = React.useState(0)
+      React.useEffect(() => form.subscribe(() => force((n) => n + 1)), [form])
+      const row = typeof useSessions === 'function'
+        ? useSessions((s) => (sessionId === void 0 ? void 0 : (s && s.byId) ? s.byId[sessionId] : undefined))
+        : void 0
+      const label = row ? sessionLabel(row, sessionId) : ''
+      const chip = label ? h('div', { 'data-enkeep-current-chip': true, title: label },
+        h('span', { 'data-enkeep-current-label': true }, label)) : null
+      const showWords = (form.getSnapshot().value || {}).showCommonWords !== false
+      const quick = showWords ? h(QuickPrompts, { form, useInput, inputActions, useSessions, sessionId }) : null
+      if (!chip && !quick) return null
+      return h('div', { 'data-enkeep-composer-current': true }, chip, quick)
     }
 
     // --- Activity bar: always-on floating strip of active sessions -----------
@@ -421,8 +463,9 @@ window.__ModuleLoader__.load({
             it.current ? h('span', { 'data-enkeep-current-badge': true }, '当前') : null)))
     }
 
-    // --- Common words (ported from dsh-wordbox) --------------------------------
-    // localStorage keys — enkeep-owned, isolated from wordbox's dsh.common-word-box.*
+    // --- Common words / structured prompts (ported from dsh-wordbox, upgraded) --
+    // localStorage keys — enkeep-owned. They hold v2 Prompt objects now; any
+    // legacy string[] left in them is migrated on read by normalizePromptList.
     const WORDS_GLOBAL_KEY = 'dsh.enkeep.words.global.v1'
     const WORDS_PROJECT_KEY = 'dsh.enkeep.words.project.v1'
     const WORDS_MODE_KEY = 'dsh.enkeep.words.mode.v1'
@@ -430,31 +473,54 @@ window.__ModuleLoader__.load({
     const WORDS_SYNC_URL = '/dsh-enkeep-words/state'
     const WORDS_SYNC_HEADERS = { 'x-dsh-enkeep-words': '1' }
     const WORDS_SYNC_POLL_MS = 10000
-    const WORDS_FLOW_SPEED = 60 // px/s for long-word marquee
+    const WORDS_FLOW_SPEED = 60 // px/s for long-label marquee
+
+    // v2 Prompt = { id, keyword, content, useCount }. v1 string → object, zero loss.
+    function normalizePrompt(raw, i) {
+      if (typeof raw === 'string') {
+        return raw === '' ? null : { id: 'legacy-' + i, keyword: '', content: raw, useCount: 0 }
+      }
+      if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+      const content = typeof raw.content === 'string' ? raw.content : ''
+      if (content === '') return null
+      let id = typeof raw.id === 'string' && raw.id !== '' ? raw.id : ''
+      if (id === '') {
+        let hash = 0
+        for (const ch of content) hash = (Math.imul(hash, 31) + ch.charCodeAt(0)) | 0
+        id = 'auto-' + i + '-' + (hash >>> 0).toString(36)
+      }
+      const keyword = typeof raw.keyword === 'string' ? raw.keyword : ''
+      const useCount = Number.isFinite(raw.useCount) ? Math.max(0, Math.trunc(raw.useCount)) : 0
+      return { id, keyword, content, useCount }
+    }
+    function normalizePromptList(list) {
+      if (!Array.isArray(list)) return []
+      const out = []
+      const seen = new Set()
+      list.forEach((raw, i) => {
+        const p = normalizePrompt(raw, i)
+        if (p !== null && !seen.has(p.id)) { seen.add(p.id); out.push(p) }
+      })
+      return out
+    }
 
     function wordsLoadList(key) {
-      try {
-        const raw = localStorage.getItem(key)
-        if (raw === null) return []
-        const parsed = JSON.parse(raw)
-        return Array.isArray(parsed) ? parsed.filter((w) => typeof w === 'string') : []
-      } catch { return [] }
+      try { return normalizePromptList(JSON.parse(localStorage.getItem(key))) } catch { return [] }
     }
     function wordsLoadProjects() {
       try {
-        const raw = localStorage.getItem(WORDS_PROJECT_KEY)
-        if (raw === null) return {}
-        const parsed = JSON.parse(raw)
+        const parsed = JSON.parse(localStorage.getItem(WORDS_PROJECT_KEY))
         if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
         const out = {}
         for (const [dir, list] of Object.entries(parsed)) {
-          out[dir] = Array.isArray(list) ? list.filter((w) => typeof w === 'string') : []
+          const items = normalizePromptList(list)
+          if (items.length > 0) out[dir] = items
         }
         return out
       } catch { return {} }
     }
-    function wordsSaveList(key, words) {
-      try { localStorage.setItem(key, JSON.stringify(words)) } catch { /* quota/disabled: ignore */ }
+    function wordsSaveList(key, list) {
+      try { localStorage.setItem(key, JSON.stringify(list)) } catch { /* quota/disabled: ignore */ }
     }
     function wordsSaveProjects(projects) {
       try {
@@ -478,9 +544,290 @@ window.__ModuleLoader__.load({
       if (typeof cwd !== 'string' || cwd === '') return null
       return cwd.replace(/[/\\]+$/, '').replace(/\\/g, '/').toLowerCase()
     }
+    // Button/label text: keyword first, else first 8 chars of content (whitespace collapsed).
+    function promptLabel(p) {
+      if (typeof p.keyword === 'string' && p.keyword.trim() !== '') return p.keyword
+      const text = String(p.content || '').replace(/\s+/g, ' ')
+      return text.length > 8 ? text.slice(0, 8) + '…' : text
+    }
 
-    // Single word row: long text truncated, marquee on hover, delete + optional "to global".
-    function WordsRow({ word, showToGlobal, alreadyGlobal, onInsert, onRemove, onAddToGlobal }) {
+    // Three-way merge by id: base=last synced, theirs=server, mine=local.
+    // Local edits win; a side's deletion is respected; shared ids take the max
+    // useCount so concurrent usage never loses counts.
+    function mergePrompts(base, theirs, mine) {
+      const baseIds = new Set(base.map((p) => p.id))
+      const theirsIds = new Set(theirs.map((p) => p.id))
+      const mineIds = new Set(mine.map((p) => p.id))
+      const out = []
+      const seen = new Set()
+      for (const p of mine) {
+        if (baseIds.has(p.id) && !theirsIds.has(p.id)) continue // deleted by server
+        out.push(p); seen.add(p.id)
+      }
+      for (const p of theirs) {
+        if (!seen.has(p.id)) {
+          if (baseIds.has(p.id) && !mineIds.has(p.id)) continue // deleted locally
+          out.push(p); seen.add(p.id)
+        } else {
+          const idx = out.findIndex((x) => x.id === p.id)
+          if (p.useCount > out[idx].useCount) out[idx] = { ...out[idx], useCount: p.useCount }
+        }
+      }
+      return out
+    }
+
+    /**
+     * Module-level single source of truth shared by the panel (input.right), the
+     * quick row (input.dock) and the settings editor. Owning sync here avoids two
+     * components each running their own poll/push and clobbering each other.
+     */
+    function createWordStore() {
+      let state = {
+        mode: wordsLoadMode(),
+        global: wordsLoadList(WORDS_GLOBAL_KEY),
+        projects: wordsLoadProjects(),
+      }
+      let rev = 0
+      let hydrated = false
+      let sentFp = null
+      let baseState = null
+      let warned = false
+      let started = false
+      let inserter = null
+      let pushTimer = null
+      let pullTimer = null
+      const listeners = new Set()
+
+      const fp = (m, g, p) => JSON.stringify([m, g, p])
+      const getSnapshot = () => state
+
+      const persist = () => {
+        wordsSaveList(WORDS_GLOBAL_KEY, state.global)
+        wordsSaveProjects(state.projects)
+        wordsSaveMode(state.mode)
+      }
+      const notify = () => { for (const fn of listeners) fn() }
+      const commit = (next) => {
+        state = next
+        persist()
+        notify()
+        schedulePush()
+      }
+      const schedulePush = () => {
+        if (!hydrated) return
+        if (pushTimer !== null) clearTimeout(pushTimer)
+        pushTimer = setTimeout(push, 800)
+      }
+      const subscribe = (fn) => {
+        listeners.add(fn)
+        if (!started) start()
+        return () => { listeners.delete(fn) }
+      }
+      const registerInserter = (fn) => {
+        inserter = fn
+        return () => { if (inserter === fn) inserter = null }
+      }
+      const locate = (id) => {
+        const g = state.global.find((p) => p.id === id)
+        if (g) return { list: 'global', key: null, prompt: g }
+        for (const [k, list] of Object.entries(state.projects)) {
+          const item = list.find((p) => p.id === id)
+          if (item) return { list: 'projects', key: k, prompt: item }
+        }
+        return null
+      }
+      const genId = () => 'p-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7)
+      const bump = (list, id) => list.map((p) => (p.id === id ? { ...p, useCount: p.useCount + 1 } : p))
+
+      // Public actions — every one goes through commit() so both subscribers update.
+      const insert = (id) => {
+        const loc = locate(id)
+        if (!loc) return
+        if (typeof inserter === 'function') {
+          try { inserter(loc.prompt.content) } catch (e) { console.warn('[enkeep] prompt insert failed', e) }
+        }
+        if (loc.list === 'global') commit({ ...state, global: bump(state.global, id) })
+        else commit({ ...state, projects: { ...state.projects, [loc.key]: bump(state.projects[loc.key], id) } })
+      }
+      const upsert = (prompt, bucket, key) => {
+        const p = normalizePrompt({ ...prompt, id: prompt.id || genId() }, 0)
+        if (!p) return
+        if (bucket === 'global') {
+          const exists = state.global.some((x) => x.id === p.id)
+          commit({ ...state, global: exists ? state.global.map((x) => (x.id === p.id ? p : x)) : [...state.global, p] })
+        } else {
+          if (!key) return
+          const cur = state.projects[key] ?? []
+          const exists = cur.some((x) => x.id === p.id)
+          commit({ ...state, projects: { ...state.projects, [key]: exists ? cur.map((x) => (x.id === p.id ? p : x)) : [...cur, p] } })
+        }
+      }
+      const remove = (id, bucket, key) => {
+        if (bucket === 'global') commit({ ...state, global: state.global.filter((p) => p.id !== id) })
+        else if (key) commit({ ...state, projects: { ...state.projects, [key]: (state.projects[key] ?? []).filter((p) => p.id !== id) } })
+      }
+      const resetCount = (id, bucket, key) => {
+        const zero = (list) => list.map((p) => (p.id === id ? { ...p, useCount: 0 } : p))
+        if (bucket === 'global') commit({ ...state, global: zero(state.global) })
+        else if (key) commit({ ...state, projects: { ...state.projects, [key]: zero(state.projects[key] ?? []) } })
+      }
+      const resetAllCounts = () => {
+        const zero = (list) => list.map((p) => ({ ...p, useCount: 0 }))
+        const projects = {}
+        for (const [k, list] of Object.entries(state.projects)) projects[k] = zero(list)
+        commit({ ...state, global: zero(state.global), projects })
+      }
+      const setMode = (mode) => {
+        if (!WORDS_MODES.includes(mode) || mode === state.mode) return
+        commit({ ...state, mode })
+      }
+      const addToGlobal = (id) => {
+        const loc = locate(id)
+        if (!loc || loc.list !== 'projects') return
+        // fresh id: an identical id in both buckets would make insert(id) ambiguous
+        commit({ ...state, global: [...state.global, { ...loc.prompt, id: genId() }] })
+      }
+
+      // ---- shared-file sync (single instance) ----
+      const fromServer = (s) => {
+        if (!s || typeof s !== 'object' || Array.isArray(s)) return null
+        const mode = WORDS_MODES.includes(s.mode) ? s.mode : 'all'
+        const r = Number.isFinite(s.rev) ? s.rev : 0
+        const global = normalizePromptList(s.words)
+        const projects = {}
+        const rp = s.projects && typeof s.projects === 'object' && !Array.isArray(s.projects) ? s.projects : {}
+        for (const [dir, list] of Object.entries(rp)) {
+          const key = wordsNormalizeProject(dir) ?? String(dir).toLowerCase()
+          const items = normalizePromptList(list)
+          if (items.length > 0) projects[key] = items
+        }
+        return { rev: r, mode, global, projects }
+      }
+      const mergeProjects = (baseP, theirsP, mineP) => {
+        const out = {}
+        const keys = new Set([...Object.keys(baseP), ...Object.keys(theirsP), ...Object.keys(mineP)])
+        for (const k of keys) {
+          const items = mergePrompts(baseP[k] ?? [], theirsP[k] ?? [], mineP[k] ?? [])
+          if (items.length > 0) out[k] = items
+        }
+        return out
+      }
+      const warn = (e) => {
+        if (!warned) { warned = true; console.warn('[enkeep] 常用词服务端同步不可用，已退回本地存储', e) }
+      }
+      const pull = async () => {
+        try {
+          const res = await fetch(WORDS_SYNC_URL, { headers: WORDS_SYNC_HEADERS })
+          if (!res.ok) return
+          const data = await res.json()
+          const server = fromServer(data && data.state)
+          if (!server) return
+          if (hydrated && server.rev <= rev) return
+          const serverFp = fp(server.mode, server.global, server.projects)
+          const dirty = fp(state.mode, state.global, state.projects) !== sentFp
+          const base = baseState || { mode: 'all', global: [], projects: {} }
+          rev = server.rev
+          sentFp = serverFp
+          baseState = { mode: server.mode, global: server.global, projects: server.projects }
+          hydrated = true
+          if (!dirty) {
+            commit({ mode: server.mode, global: server.global, projects: server.projects })
+            return
+          }
+          commit({
+            mode: state.mode,
+            global: mergePrompts(base.global, server.global, state.global),
+            projects: mergeProjects(base.projects, server.projects, state.projects),
+          })
+        } catch (e) { warn(e) }
+      }
+      const push = async () => {
+        const cur = fp(state.mode, state.global, state.projects)
+        if (cur === sentFp) return
+        const base = baseState || { mode: 'all', global: [], projects: {} }
+        try {
+          const res = await fetch(WORDS_SYNC_URL, {
+            method: 'POST',
+            headers: { ...WORDS_SYNC_HEADERS, 'content-type': 'application/json' },
+            body: JSON.stringify({ baseRev: rev, mode: state.mode, words: state.global, projects: state.projects }),
+          })
+          if (!res.ok) return
+          const data = await res.json()
+          const server = fromServer(data && data.state)
+          if (!server) return
+          rev = server.rev
+          if (data.conflict !== true) {
+            sentFp = cur
+            baseState = { mode: state.mode, global: state.global, projects: state.projects }
+            return
+          }
+          const mg = mergePrompts(base.global, server.global, state.global)
+          const mp = mergeProjects(base.projects, server.projects, state.projects)
+          const retry = await fetch(WORDS_SYNC_URL, {
+            method: 'POST',
+            headers: { ...WORDS_SYNC_HEADERS, 'content-type': 'application/json' },
+            body: JSON.stringify({ baseRev: rev, mode: state.mode, words: mg, projects: mp }),
+          })
+          if (!retry.ok) return
+          const rd = await retry.json()
+          const rs = fromServer(rd && rd.state)
+          if (rs) rev = rs.rev
+          const merged = { mode: state.mode, global: mg, projects: mp }
+          sentFp = fp(merged.mode, merged.global, merged.projects)
+          baseState = merged
+          commit(merged)
+        } catch (e) { warn(e) }
+      }
+      const onVisible = () => { if (typeof document === 'undefined' || !document.hidden) pull() }
+      const onStorage = (e) => {
+        if (e.key === WORDS_GLOBAL_KEY || e.key === WORDS_PROJECT_KEY || e.key === WORDS_MODE_KEY) {
+          state = { mode: wordsLoadMode(), global: wordsLoadList(WORDS_GLOBAL_KEY), projects: wordsLoadProjects() }
+          sentFp = fp(state.mode, state.global, state.projects)
+          notify()
+        }
+      }
+      const start = () => {
+        if (started) return
+        started = true
+        ;(async () => {
+          try {
+            const res = await fetch(WORDS_SYNC_URL, { headers: WORDS_SYNC_HEADERS })
+            if (!res.ok) return
+            const data = await res.json()
+            if (fromServer(data && data.state) === null) {
+              await fetch(WORDS_SYNC_URL + '?migrate=1', {
+                method: 'POST',
+                headers: { ...WORDS_SYNC_HEADERS, 'content-type': 'application/json' },
+                body: JSON.stringify({ mode: state.mode, words: state.global, projects: state.projects }),
+              })
+            }
+            await pull()
+            pullTimer = setInterval(() => { if (typeof document === 'undefined' || !document.hidden) pull() }, WORDS_SYNC_POLL_MS)
+            if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible)
+            if (typeof window !== 'undefined') window.addEventListener('storage', onStorage)
+          } catch (e) { warn(e) }
+        })()
+      }
+
+      return { subscribe, getSnapshot, registerInserter, insert, upsert, remove, resetCount, resetAllCounts, setMode, addToGlobal }
+    }
+    const wordStore = createWordStore()
+
+    // Subscribe helper: prefer React's native external-store hook when available;
+    // the fallback works on any React 18 without that export.
+    function useWordStore(store) {
+      if (typeof React.useSyncExternalStore === 'function') {
+        return React.useSyncExternalStore(store.subscribe, store.getSnapshot)
+      }
+      const [, force] = React.useState(0)
+      React.useEffect(() => store.subscribe(() => force((n) => n + 1)), [store])
+      return store.getSnapshot()
+    }
+
+    // A word row in the panel: keyword (or content preview) + marquee on hover,
+    // delete + optional "to global". Clicking inserts the FULL content.
+    function WordsRow({ prompt, showToGlobal, alreadyGlobal, onInsert, onRemove, onAddToGlobal }) {
+      const label = promptLabel(prompt)
       const [hovered, setHovered] = React.useState(false)
       const [overflow, setOverflow] = React.useState(0)
       const btnRef = React.useRef(null)
@@ -495,8 +842,8 @@ window.__ModuleLoader__.load({
         h('path', { d: 'M6 1.5v6M3.5 4L6 1.5 8.5 4M2 8.5v2h8v-2', stroke: 'currentColor', strokeWidth: 1.2, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' }))
       return h('li', { className: 'ekeep-w-row', onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) },
         h('button', {
-          ref: btnRef, type: 'button', className: 'ekeep-w-word', title: word,
-          onMouseDown: (e) => e.preventDefault(), onClick: () => onInsert(word),
+          ref: btnRef, type: 'button', className: 'ekeep-w-word', title: prompt.content,
+          onMouseDown: (e) => e.preventDefault(), onClick: () => onInsert(prompt.id),
         }, h('span', {
           ref: textRef, className: 'ekeep-w-wordText',
           style: hovered && overflow > 0 ? {
@@ -504,18 +851,18 @@ window.__ModuleLoader__.load({
             transitionDuration: flowDuration.toFixed(2) + 's',
             transitionTimingFunction: 'linear',
           } : undefined,
-        }, word)),
+        }, label)),
         showToGlobal && !alreadyGlobal ? h('button', {
           type: 'button', className: 'ekeep-w-toGlobal', title: '添加到全局', 'aria-label': '添加到全局',
-          onMouseDown: (e) => e.preventDefault(), onClick: () => onAddToGlobal(word),
+          onMouseDown: (e) => e.preventDefault(), onClick: () => onAddToGlobal(prompt.id),
         }, toGlobalIcon) : null,
         h('button', {
           type: 'button', className: 'ekeep-w-del', title: '删除', 'aria-label': '删除',
-          onMouseDown: (e) => e.preventDefault(), onClick: () => onRemove(word),
+          onMouseDown: (e) => e.preventDefault(), onClick: () => onRemove(prompt.id),
         }, '×'))
     }
 
-    // Trigger icon: inline SVG bookmark/list glyph, same 16x16 / 1.5 stroke spec as HeaderIcon.
+    // Trigger icon: inline SVG bookmark, same 16x16 / 1.5 stroke spec as HeaderIcon.
     function WordsTriggerIcon() {
       return h('svg', {
         width: 15, height: 15, viewBox: '0 0 16 16', fill: 'none',
@@ -526,196 +873,42 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * CommonWords — registered into conversation.input.right (session scope).
-     * Standard props: useInput / inputActions / useSessions / sessionId.
-     * Hardcoded Chinese labels to stay consistent with enkeep's other components.
+     * CommonWords — the "词" panel on conversation.input.right (session scope).
+     * Now a thin view over wordStore: no local library state, no own sync loop.
      */
     function CommonWords({ useInput, inputActions, useSessions, sessionId }) {
       const [open, setOpen] = React.useState(false)
       const [editing, setEditing] = React.useState(false)
       const [draftWord, setDraftWord] = React.useState('')
-      const [mode, setMode] = React.useState(wordsLoadMode)
-      const [globalWords, setGlobalWords] = React.useState(() => wordsLoadList(WORDS_GLOBAL_KEY))
-      const [projects, setProjects] = React.useState(wordsLoadProjects)
+      const state = useWordStore(wordStore)
       const draft = typeof useInput === 'function' ? (useInput((s) => (s === void 0 ? '' : s.draft)) ?? '') : ''
       const cwd = typeof useSessions === 'function'
         ? useSessions((s) => (sessionId === void 0 ? void 0 : s.byId[sessionId]?.cwd))
         : void 0
       const projectKey = wordsNormalizeProject(cwd)
-      const projectWords = projectKey === null ? [] : (projects[projectKey] ?? [])
+      const projectWords = projectKey === null ? [] : (state.projects[projectKey] ?? [])
 
-      // Persist to localStorage (instant cache + offline fallback).
-      React.useEffect(() => { wordsSaveList(WORDS_GLOBAL_KEY, globalWords) }, [globalWords])
-      React.useEffect(() => { wordsSaveProjects(projects) }, [projects])
-      React.useEffect(() => { wordsSaveMode(mode) }, [mode])
-
-      // Cross-tab sync via storage events.
+      // This slot definitely has inputActions: register it as the store's inserter.
+      const draftRef = React.useRef(draft); draftRef.current = draft
       React.useEffect(() => {
-        const onStorage = (event) => {
-          if (event.key === WORDS_GLOBAL_KEY) setGlobalWords(wordsLoadList(WORDS_GLOBAL_KEY))
-          else if (event.key === WORDS_PROJECT_KEY) setProjects(wordsLoadProjects())
-        }
-        window.addEventListener('storage', onStorage)
-        return () => window.removeEventListener('storage', onStorage)
-      }, [])
+        if (typeof inputActions?.setDraft !== 'function') return undefined
+        return wordStore.registerInserter((content) => {
+          const base = draftRef.current || ''
+          const sep = base !== '' && !/\s$/.test(base) ? ' ' : ''
+          inputActions.setDraft(base + sep + content)
+        })
+      }, [inputActions])
 
-      // --- server shared storage (three-way merge) ---
-      const syncRevRef = React.useRef(0)
-      const syncHydratedRef = React.useRef(false)
-      const syncSentRef = React.useRef(null)
-      const syncBaseRef = React.useRef(null)
-      const syncStateRef = React.useRef({ mode: 'all', globalWords: [], projects: {} })
-      syncStateRef.current = { mode, globalWords, projects }
-      const fp = (m, w, p) => JSON.stringify([m, w, p])
-      if (syncSentRef.current === null) syncSentRef.current = fp(mode, globalWords, projects)
-      if (syncBaseRef.current === null) syncBaseRef.current = { mode, words: globalWords, projects }
-
-      const mergeWords = (base, theirs, mine) => {
-        const removedByTheirs = new Set(base.filter((w) => !theirs.includes(w)))
-        const removedByMine = new Set(base.filter((w) => !mine.includes(w)))
-        const out = []
-        for (const w of mine) if (!removedByTheirs.has(w) && !out.includes(w)) out.push(w)
-        for (const w of theirs) if (!removedByMine.has(w) && !out.includes(w)) out.push(w)
-        return out
-      }
-
-      const warnedRef = React.useRef(false)
-      const syncPull = React.useCallback(async () => {
-        try {
-          const res = await fetch(WORDS_SYNC_URL, { headers: WORDS_SYNC_HEADERS })
-          if (!res.ok) return
-          const data = await res.json()
-          const state = data === null || typeof data !== 'object' || Array.isArray(data) ? null : data.state
-          if (state === null || typeof state !== 'object' || Array.isArray(state)) return
-          const rev = Number.isFinite(state.rev) ? state.rev : 0
-          if (syncHydratedRef.current && rev <= syncRevRef.current) return
-          const nextMode = WORDS_MODES.includes(state.mode) ? state.mode : 'all'
-          const nextWords = Array.isArray(state.words) ? state.words.filter((w) => typeof w === 'string') : []
-          const nextProjects = state.projects !== null && typeof state.projects === 'object' && !Array.isArray(state.projects) ? state.projects : {}
-          const serverFp = fp(nextMode, nextWords, nextProjects)
-          const cur = syncStateRef.current
-          const dirty = fp(cur.mode, cur.globalWords, cur.projects) !== syncSentRef.current
-          const base = syncBaseRef.current
-          syncRevRef.current = rev
-          syncSentRef.current = serverFp
-          syncBaseRef.current = { mode: nextMode, words: nextWords, projects: nextProjects }
-          syncHydratedRef.current = true
-          if (!dirty) {
-            setMode(nextMode); setGlobalWords(nextWords); setProjects(nextProjects)
-            return
-          }
-          const mergedWords = mergeWords(Array.isArray(base.words) ? base.words : [], nextWords, cur.globalWords)
-          const sProjects = nextProjects !== null && typeof nextProjects === 'object' ? nextProjects : {}
-          const bProjects = base.projects !== null && typeof base.projects === 'object' ? base.projects : {}
-          const lProjects = cur.projects !== null && typeof cur.projects === 'object' ? cur.projects : {}
-          const mergedProjects = {}
-          for (const dir of new Set([...Object.keys(bProjects), ...Object.keys(sProjects), ...Object.keys(lProjects)])) {
-            const items = mergeWords(bProjects[dir] ?? [], sProjects[dir] ?? [], lProjects[dir] ?? [])
-            if (items.length > 0) mergedProjects[dir] = items
-          }
-          setMode(cur.mode); setGlobalWords(mergedWords); setProjects(mergedProjects)
-        } catch (error) {
-          if (!warnedRef.current) {
-            warnedRef.current = true
-            console.warn('[enkeep] 常用词服务端同步不可用，已退回本地存储', error)
-          }
-        }
-      }, [])
-
-      // First load: seed via migrate=1 if server has no file, then pull authoritative state.
-      React.useEffect(() => {
-        let alive = true
-        ;(async () => {
-          try {
-            const res = await fetch(WORDS_SYNC_URL, { headers: WORDS_SYNC_HEADERS })
-            if (!res.ok) return
-            const data = await res.json()
-            if (!alive) return
-            if (data !== null && typeof data === 'object' && data.state === null) {
-              const cur = syncStateRef.current
-              await fetch(WORDS_SYNC_URL + '?migrate=1', {
-                method: 'POST',
-                headers: { ...WORDS_SYNC_HEADERS, 'content-type': 'application/json' },
-                body: JSON.stringify({ mode: cur.mode, words: cur.globalWords, projects: cur.projects }),
-              })
-            }
-            if (alive) await syncPull()
-          } catch { /* no server: stay local */ }
-        })()
-        return () => { alive = false }
-      }, [syncPull])
-
-      // Debounced push (800ms).
-      React.useEffect(() => {
-        if (!syncHydratedRef.current) return
-        const currentFp = fp(mode, globalWords, projects)
-        if (currentFp === syncSentRef.current) return
-        const timer = window.setTimeout(async () => {
-          try {
-            const res = await fetch(WORDS_SYNC_URL, {
-              method: 'POST',
-              headers: { ...WORDS_SYNC_HEADERS, 'content-type': 'application/json' },
-              body: JSON.stringify({ baseRev: syncRevRef.current, mode, words: globalWords, projects }),
-            })
-            if (!res.ok) return
-            const data = await res.json()
-            const state = data === null || typeof data !== 'object' || Array.isArray(data) ? null : data.state
-            if (state === null || typeof state !== 'object' || Array.isArray(state)) return
-            const rev = Number.isFinite(state.rev) ? state.rev : 0
-            syncRevRef.current = rev
-            if (data.conflict !== true) {
-              syncSentRef.current = currentFp
-              syncBaseRef.current = { mode, words: globalWords, projects }
-              return
-            }
-            let base = ['all', [], {}]
-            try { base = JSON.parse(syncSentRef.current || '["all",[],{}]') } catch { /* ignore */ }
-            const serverProjects = state.projects !== null && typeof state.projects === 'object' ? state.projects : {}
-            const mergedWords = mergeWords(Array.isArray(base[1]) ? base[1] : [], Array.isArray(state.words) ? state.words : [], globalWords)
-            const mergedProjects = { ...serverProjects }
-            for (const [dir, list] of Object.entries(projects)) {
-              mergedProjects[dir] = mergeWords((base[2] ?? {})[dir] ?? [], serverProjects[dir] ?? [], list)
-            }
-            const retry = await fetch(WORDS_SYNC_URL, {
-              method: 'POST',
-              headers: { ...WORDS_SYNC_HEADERS, 'content-type': 'application/json' },
-              body: JSON.stringify({ baseRev: rev, mode, words: mergedWords, projects: mergedProjects }),
-            })
-            if (!retry.ok) return
-            const rd = await retry.json()
-            const rs = rd !== null && typeof rd === 'object' ? rd.state : null
-            if (rs !== null && typeof rs === 'object' && Number.isFinite(rs.rev)) syncRevRef.current = rs.rev
-            syncSentRef.current = fp(mode, mergedWords, mergedProjects)
-            syncBaseRef.current = { mode, words: mergedWords, projects: mergedProjects }
-            setGlobalWords(mergedWords); setProjects(mergedProjects)
-          } catch { /* push failed silently; next change/poll will realign */ }
-        }, 800)
-        return () => window.clearTimeout(timer)
-      }, [mode, globalWords, projects, syncPull])
-
-      // Poll every 10s only while panel is open; pause when tab hidden.
-      React.useEffect(() => {
-        if (!open) return
-        syncPull()
-        const id = window.setInterval(() => { if (!document.hidden) syncPull() }, WORDS_SYNC_POLL_MS)
-        const onVisible = () => { if (!document.hidden) syncPull() }
-        document.addEventListener('visibilitychange', onVisible)
-        return () => {
-          window.clearInterval(id)
-          document.removeEventListener('visibilitychange', onVisible)
-        }
-      }, [open, syncPull])
-
-      // panel positioning (wb-03): read composer card rect → write ONLY panel's own style.
+      // Panel positioning: read composer card rect, write ONLY panel's own style.
       const rootRef = React.useRef(null)
       const panelRef = React.useRef(null)
       React.useEffect(() => {
-        if (!open || !panelRef.current) return
+        if (!open || !panelRef.current) return undefined
         const p = panelRef.current, r = rootRef.current
-        if (!r) return
+        if (!r) return undefined
         const c = r.closest('[data-composer-card]') || r.closest('[data-composer-seat]') ||
           r.closest('[class*="composer"]') || r.parentElement?.parentElement?.parentElement || r.parentElement
-        if (!c) return
+        if (!c) return undefined
         const u = () => {
           const q = c.getBoundingClientRect()
           p.style.left = q.left + 'px'
@@ -727,12 +920,10 @@ window.__ModuleLoader__.load({
         return () => window.removeEventListener('resize', u)
       }, [open])
 
-      // close on Esc / outside click.
+      // close on Esc / outside click
       React.useEffect(() => {
-        if (!open) return
-        const onKey = (e) => {
-          if (e.key === 'Escape') { setOpen(false); setEditing(false) }
-        }
+        if (!open) return undefined
+        const onKey = (e) => { if (e.key === 'Escape') { setOpen(false); setEditing(false) } }
         const onPointer = (e) => {
           if (rootRef.current !== null && e.target instanceof Node && !rootRef.current.contains(e.target)) {
             setOpen(false); setEditing(false)
@@ -747,47 +938,27 @@ window.__ModuleLoader__.load({
       }, [open])
 
       const visible = React.useMemo(() => {
-        if (mode === 'global') return globalWords
-        if (mode === 'current') return projectWords
-        const seen = new Set(globalWords)
-        return [...globalWords, ...projectWords.filter((w) => !seen.has(w))]
-      }, [mode, globalWords, projectWords])
+        if (state.mode === 'global') return state.global
+        if (state.mode === 'current') return projectWords
+        const seen = new Set(state.global.map((p) => p.id))
+        return [...state.global, ...projectWords.filter((p) => !seen.has(p.id))]
+      }, [state.mode, state.global, projectWords])
 
-      const insert = (word) => {
-        const base = draft || ''
-        const sep = base !== '' && !/\s$/.test(base) ? ' ' : ''
-        if (typeof inputActions?.setDraft === 'function') inputActions.setDraft(base + sep + word)
-      }
       const addWord = () => {
         const word = draftWord.trim()
         if (word === '') return
-        if (mode === 'global') {
-          setGlobalWords((prev) => prev.includes(word) ? prev : [...prev, word])
-        } else {
-          if (projectKey === null) return
-          setProjects((prev) => {
-            const cur = prev[projectKey] ?? []
-            return cur.includes(word) ? prev : { ...prev, [projectKey]: [...cur, word] }
-          })
-        }
+        wordStore.upsert({ keyword: '', content: word, useCount: 0 }, state.mode === 'global' ? 'global' : 'project', projectKey)
         setDraftWord(''); setEditing(false)
       }
-      const removeWord = (word) => {
-        setGlobalWords((prev) => prev.filter((w) => w !== word))
-        if (projectKey !== null) {
-          setProjects((prev) => {
-            const cur = prev[projectKey] ?? []
-            return cur.includes(word) ? { ...prev, [projectKey]: cur.filter((w) => w !== word) } : prev
-          })
-        }
+      const removeWord = (id) => {
+        if (state.global.some((p) => p.id === id)) wordStore.remove(id, 'global')
+        else if (projectKey !== null) wordStore.remove(id, 'project', projectKey)
       }
-      const addToGlobal = (word) => {
-        setGlobalWords((prev) => prev.includes(word) ? prev : [...prev, word])
-      }
+      const addToGlobal = (id) => wordStore.addToGlobal(id)
 
-      const emptyText = mode === 'global' ? '还没有常用词，点击下方按钮添加'
-        : mode === 'current' ? (projectKey === null ? '当前没有项目' : '当前项目还没有常用词')
-        : '还没有任何常用词，点击下方按钮添加'
+      const emptyText = state.mode === 'global' ? '还没有常用词，点击下方按钮添加'
+        : state.mode === 'current' ? (projectKey === null ? '当前没有项目' : '当前项目还没有常用词')
+          : '还没有任何常用词，点击下方按钮添加'
 
       const chevron = h('span', {
         className: 'ekeep-w-chevron' + (open ? ' ekeep-w-chevronOpen' : ''),
@@ -818,11 +989,12 @@ window.__ModuleLoader__.load({
               onClick: () => { setEditing(false); setDraftWord('') },
             }, '取消')
           ) : visible.length === 0 ? h('div', { className: 'ekeep-w-empty' }, emptyText)
-            : h('ul', { className: 'ekeep-w-list' }, visible.map((word) => h(WordsRow, {
-              key: word, word,
-              showToGlobal: mode === 'current',
-              alreadyGlobal: globalWords.includes(word),
-              onInsert: insert, onRemove: removeWord, onAddToGlobal: addToGlobal,
+            : h('ul', { className: 'ekeep-w-list' }, visible.map((p) => h(WordsRow, {
+              key: p.id, prompt: p,
+              showToGlobal: state.mode === 'current',
+              alreadyGlobal: state.global.some((g) => g.content === p.content),
+              onInsert: (id) => wordStore.insert(id),
+              onRemove: removeWord, onAddToGlobal: addToGlobal,
             }))),
           h('div', { className: 'ekeep-w-actions' },
             !editing ? h('button', {
@@ -832,12 +1004,128 @@ window.__ModuleLoader__.load({
             h('div', { className: 'ekeep-w-modes', role: 'group', 'aria-label': '显示范围' },
               [['all', '全部'], ['global', '全局'], ['current', '当前']].map(([value, label]) => h('button', {
                 key: value, type: 'button',
-                className: 'ekeep-w-mode' + (mode === value ? ' ekeep-w-modeActive' : ''),
-                'aria-pressed': mode === value, title: label,
-                onMouseDown: (e) => e.preventDefault(), onClick: () => setMode(value),
+                className: 'ekeep-w-mode' + (state.mode === value ? ' ekeep-w-modeActive' : ''),
+                'aria-pressed': state.mode === value, title: label,
+                onMouseDown: (e) => e.preventDefault(), onClick: () => wordStore.setMode(value),
               }, label)))
           )
         ) : null)
+    }
+
+    /**
+     * QuickPrompts — top-N (by useCount) prompt buttons rendered inline right
+     * after the current-session chip, on conversation.input.dock. Single-line
+     * horizontal scroll; clicking inserts the full content via the store.
+     */
+    function QuickPrompts({ form, useInput, inputActions, useSessions, sessionId }) {
+      const state = useWordStore(wordStore)
+      const [, force] = React.useState(0)
+      React.useEffect(() => form.subscribe(() => force((n) => n + 1)), [form])
+      const rawN = Number((form.getSnapshot().value || {}).quickPromptCount)
+      const n = Number.isFinite(rawN) ? Math.max(1, Math.min(12, Math.trunc(rawN))) : 6
+      const draft = typeof useInput === 'function' ? (useInput((s) => (s === void 0 ? '' : s.draft)) ?? '') : ''
+      const cwd = typeof useSessions === 'function'
+        ? useSessions((s) => (sessionId === void 0 ? void 0 : s.byId[sessionId]?.cwd))
+        : void 0
+      const projectKey = wordsNormalizeProject(cwd)
+      const draftRef = React.useRef(draft); draftRef.current = draft
+      React.useEffect(() => {
+        if (typeof inputActions?.setDraft !== 'function') return undefined
+        return wordStore.registerInserter((content) => {
+          const base = draftRef.current || ''
+          const sep = base !== '' && !/\s$/.test(base) ? ' ' : ''
+          inputActions.setDraft(base + sep + content)
+        })
+      }, [inputActions])
+      const top = React.useMemo(() => {
+        const all = [...state.global, ...(projectKey === null ? [] : (state.projects[projectKey] ?? []))]
+        return all.slice().sort((a, b) =>
+          (b.useCount - a.useCount) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).slice(0, n)
+      }, [state.global, state.projects, projectKey, n])
+      if (top.length === 0) return null
+      return h('div', { 'data-enkeep-quick': true }, top.map((p) =>
+        h('button', {
+          key: p.id, type: 'button', 'data-enkeep-quick-item': true,
+          title: p.content,
+          onMouseDown: (e) => e.preventDefault(),
+          onClick: () => wordStore.insert(p.id),
+        }, promptLabel(p))))
+    }
+
+    /**
+     * PromptsEditor — settings-page CRUD over wordStore. Keyword single-line,
+     * content multi-line textarea (large text OK), frequency read-only + reset.
+     */
+    function PromptsEditor({ store }) {
+      const state = useWordStore(store)
+      const [editId, setEditId] = React.useState(null) // null=closed | 'new' | prompt id
+      const [bucket, setBucket] = React.useState('global')
+      const [key, setKey] = React.useState(null)
+      const [kw, setKw] = React.useState('')
+      const [content, setContent] = React.useState('')
+      const [confirmId, setConfirmId] = React.useState(null)
+
+      const rows = React.useMemo(() => {
+        const out = []
+        state.global.forEach((p) => out.push({ prompt: p, bucket: 'global', key: null, origin: '全局' }))
+        for (const [k, list] of Object.entries(state.projects)) {
+          list.forEach((p) => out.push({ prompt: p, bucket: 'project', key: k, origin: k }))
+        }
+        return out
+      }, [state.global, state.projects])
+
+      const trimmedKw = kw.trim()
+      const duplicate = trimmedKw !== '' && rows.some((r) => r.prompt.id !== editId && r.prompt.keyword.trim() === trimmedKw)
+      const beginEdit = (r) => {
+        setEditId(r.prompt.id); setBucket(r.bucket); setKey(r.key)
+        setKw(r.prompt.keyword); setContent(r.prompt.content); setConfirmId(null)
+      }
+      const beginNew = () => { setEditId('new'); setBucket('global'); setKey(null); setKw(''); setContent(''); setConfirmId(null) }
+      const cancel = () => { setEditId(null); setKw(''); setContent('') }
+      const save = () => {
+        const c = content.trim()
+        if (c === '') return
+        const existing = editId !== 'new' ? rows.find((r) => r.prompt.id === editId) : null
+        store.upsert({ id: editId === 'new' ? undefined : editId, keyword: trimmedKw, content: c, useCount: existing ? existing.prompt.useCount : 0 }, bucket, key)
+        cancel()
+      }
+      const preview = (s) => {
+        const t = String(s || '').replace(/\s+/g, ' ')
+        return t.length > 60 ? t.slice(0, 60) + '…' : t
+      }
+      const removeRow = (r) => {
+        if (confirmId === r.prompt.id) { store.remove(r.prompt.id, r.bucket, r.key); setConfirmId(null) }
+        else setConfirmId(r.prompt.id)
+      }
+
+      return h('div', { className: 'ekeep-p-wrap' },
+        h('div', { className: 'ekeep-p-toolbar' },
+          h('button', { type: 'button', className: 'ekeep-p-btn ekeep-p-btnPrimary', onClick: beginNew }, '＋ 新增提示词'),
+          h('button', { type: 'button', className: 'ekeep-p-btn', onClick: () => store.resetAllCounts() }, '全部频率归零'),
+          h('span', { className: 'ekeep-p-count' }, `共 ${rows.length} 条`)),
+        editId !== null ? h('div', { className: 'ekeep-p-edit' },
+          h('span', { className: 'ekeep-p-fieldlabel' }, '关键字（可选，3~6 字）'),
+          h('input', { className: 'ekeep-p-input', value: kw, placeholder: '例：审核', onChange: (e) => setKw(e.target.value) }),
+          duplicate ? h('span', { className: 'ekeep-p-dup' }, '关键字与其他条目重复，仍可保存') : null,
+          h('span', { className: 'ekeep-p-fieldlabel' }, '内容（支持多行大段文字）'),
+          h('textarea', { className: 'ekeep-p-textarea', rows: 5, value: content, placeholder: '输入提示词正文…', onChange: (e) => setContent(e.target.value) }),
+          h('div', { className: 'ekeep-p-toolbar' },
+            h('button', { type: 'button', className: 'ekeep-p-btn ekeep-p-btnPrimary', disabled: content.trim() === '', onClick: save }, '确定'),
+            h('button', { type: 'button', className: 'ekeep-p-btn', onClick: cancel }, '取消'))) : null,
+        rows.length === 0 ? h('div', { className: 'ekeep-p-empty' }, '还没有提示词，点“新增提示词”开始。')
+          : h('ul', { className: 'ekeep-p-list' }, rows.map((r) => h('li', {
+            key: r.bucket + ':' + r.key + ':' + r.prompt.id, className: 'ekeep-p-row',
+          },
+            h('div', { className: 'ekeep-p-main' },
+              h('span', { className: 'ekeep-p-kw', title: r.prompt.keyword || '（无关键字）' }, r.prompt.keyword || '（无关键字）'),
+              h('span', { className: 'ekeep-p-prev', title: r.prompt.content }, r.origin + ' · ' + preview(r.prompt.content))),
+            h('span', { className: 'ekeep-p-uses' }, r.prompt.useCount + ' 次'),
+            h('div', { className: 'ekeep-p-acts' },
+              h('button', { type: 'button', className: 'ekeep-p-mini', onClick: () => beginEdit(r) }, '编辑'),
+              h('button', { type: 'button', className: 'ekeep-p-mini', onClick: () => store.resetCount(r.prompt.id, r.bucket, r.key) }, '归零'),
+              h('button', { type: 'button', className: 'ekeep-p-mini ekeep-p-miniDanger', onClick: () => removeRow(r) },
+                confirmId === r.prompt.id ? '确认删除' : '删除')))))
+      )
     }
 
     // --- Center-column panel: width toggle + short usage note ----------------
@@ -891,7 +1179,7 @@ window.__ModuleLoader__.load({
     }
 
     // Settings page: toggles + activity window via the same form.
-    function EnkeepSettings({ form }) {
+    function EnkeepSettings({ form, store }) {
       const [, force] = React.useState(0)
       React.useEffect(() => form.subscribe(() => force((n) => n + 1)), [form])
       const value = form.getSnapshot().value || {}
@@ -900,12 +1188,15 @@ window.__ModuleLoader__.load({
       const wide = value.chatWidth === 'wide'
       const hoursRaw = Number(value.activityWindowHours)
       const hours = Number.isFinite(hoursRaw) && hoursRaw >= 1 ? hoursRaw : 24
+      const qRaw = Number(value.quickPromptCount)
+      const quickN = Number.isFinite(qRaw) ? Math.max(1, Math.min(12, Math.trunc(qRaw))) : 6
       const busy = React.useRef(false)
       const set = async (field, v) => {
         if (busy.current) return
         busy.current = true
         try { await form.set(field, v) } finally { busy.current = false; force((n) => n + 1) }
       }
+      const numStyle = { width: 72, padding: '4px 6px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-l3)', background: 'transparent', color: 'inherit' }
       return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
         h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
           h('input', { type: 'checkbox', checked: show, onChange: (e) => set('showLauncher', e.target.checked) }),
@@ -913,6 +1204,19 @@ window.__ModuleLoader__.load({
         h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
           h('input', { type: 'checkbox', checked: showWords, onChange: (e) => set('showCommonWords', e.target.checked) }),
           h('span', null, '显示常用词按钮（输入框右侧）')),
+        h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+          h('span', null, '输入框上方高频提示词数量（1~12）'),
+          h('input', {
+            type: 'number', min: 1, max: 12, step: 1,
+            value: quickN,
+            disabled: busy.current,
+            style: numStyle,
+            onChange: (e) => {
+              const n = Number(e.target.value)
+              if (Number.isFinite(n) && n >= 1 && n <= 12) set('quickPromptCount', n)
+            },
+          }),
+          h('span', { style: { fontSize: 12, opacity: 0.6 } }, '按使用频率显示前 N 个，点击即插入')),
         h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
           h('input', { type: 'checkbox', checked: wide, onChange: (e) => set('chatWidth', e.target.checked ? 'wide' : 'narrow') }),
           h('span', null, '宽屏聊天区（去掉 920px 上限）')),
@@ -922,13 +1226,16 @@ window.__ModuleLoader__.load({
             type: 'number', min: 1, max: 720, step: 1,
             value: hours,
             disabled: busy.current,
-            style: { width: 72, padding: '4px 6px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-l3)', background: 'transparent', color: 'inherit' },
+            style: numStyle,
             onChange: (e) => {
               const n = Number(e.target.value)
               if (Number.isFinite(n) && n >= 1 && n <= 720) set('activityWindowHours', n)
             },
           }),
-          h('span', { style: { fontSize: 12, opacity: 0.6 } }, '列出更新于该时长内 / 运行中 / 未读的会话')))
+          h('span', { style: { fontSize: 12, opacity: 0.6 } }, '列出更新于该时长内 / 运行中 / 未读的会话')),
+        h('div', { style: { borderTop: '1px solid var(--dsw-alias-border-l3)', paddingTop: 16 } },
+          h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '常用提示词（关键字 + 正文，正文支持多行大段文字）'),
+          h(PromptsEditor, { store })))
     }
 
     return {
@@ -1074,25 +1381,29 @@ window.__ModuleLoader__.load({
           id: 'enkeep',
           order: 30,
           label: 'Enkeep',
-          inject: () => ({ form }),
-        }, ({ form: f }) => h(EnkeepSettings, { form: f }))), 'enkeep: settings')
+          inject: () => ({ form, store: wordStore }),
+        }, ({ form: f, store: s }) => h(EnkeepSettings, { form: f, store: s }))), 'enkeep: settings')
 
-        // (5) Current-session chip above the composer input. Same slot/position
-        // as the git-panel branch chip, but a plain non-interactive label.
-        // Standard props (useSessions from root, sessionId from session scope)
-        // are auto-injected by the renderer into session-scope slot entries.
+        // (5) Above-composer dock: current-session label + quick prompts in one
+        // row. Standard props (useSessions/sessionId/useInput/inputActions) are
+        // auto-injected by the renderer into session-scope slot entries; `form`
+        // comes from inject so the quick row reads quickPromptCount live.
         ctx.effect(() => {
           const stopStyle = installCurrentStyle()
-          const stopChip = ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+          const stopDock = ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
             name: 'conversation.input.dock',
-            id: 'enkeep-current-session',
+            id: 'enkeep-composer-dock',
             order: 100,
-          }, (props) => h(CurrentSessionBar, {
+            inject: () => ({ form }),
+          }, (props) => h(ComposerDock, {
+            form: props.form,
             useSessions: props.useSessions,
             sessionId: props.sessionId,
+            useInput: props.useInput,
+            inputActions: props.inputActions,
           })))
-          return () => { stopChip(); stopStyle() }
-        }, 'enkeep: current session chip')
+          return () => { stopDock(); stopStyle() }
+        }, 'enkeep: composer dock')
 
         // (6) Common words: trigger + panel on the composer's trailing side.
         // conversation.input.right is a session-scope list slot; useInput /

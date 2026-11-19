@@ -34,6 +34,8 @@ export const Config = Schema.object({
   activityWindowHours: Schema.number().step(1).min(1).max(720).default(24).volatile(),
   // 常用词入口：是否在 composer 显示常用词触发按钮。volatile 便于设置页即时切换。
   showCommonWords: Schema.boolean().default(true).volatile(),
+  // 输入框上方高频提示词快捷按钮显示数量（1~12）。volatile：设置页即时生效。
+  quickPromptCount: Schema.number().step(1).min(1).max(12).default(6).volatile(),
 })
 
 export function apply(ctx, config) {
@@ -44,7 +46,8 @@ export function apply(ctx, config) {
     const launcher = config.showLauncher.get()
     const hours = config.activityWindowHours.get()
     const words = config.showCommonWords.get()
-    ctx.logger?.info('[enkeep] volatile config: chatWidth=%s showLauncher=%s activityWindowHours=%s showCommonWords=%s', width, launcher, hours, words)
+    const quickN = config.quickPromptCount.get()
+    ctx.logger?.info('[enkeep] volatile config: chatWidth=%s showLauncher=%s activityWindowHours=%s showCommonWords=%s quickPromptCount=%s', width, launcher, hours, words, quickN)
   })
 
   installWordRoutes(ctx)
@@ -72,15 +75,53 @@ function stateFile() {
 }
 
 /**
- * 把任意输入收敛成 `{ rev, updatedAt, mode, words: string[], projects: {dir: string[]} }`。
- * 去重、剔除空串与非字符串；空的项目桶直接丢弃（与客户端 saveProjects 的清理语义一致）。
+ * 把一条词条收敛成 v2 的 `Prompt = {id, keyword, content, useCount}`。
+ *  - v1 字符串 → `{id:'legacy-<i>', keyword:'', content:<原文>, useCount:0}`，原文一字不丢；
+ *  - v2 对象 → 规范化四个字段；缺 id 时用内容的确定性 hash 兜底（重复读取不漂移）。
+ *  - 空内容（'' / 非字符串 / 非对象）→ null，由 normalizePrompts 丢弃。
+ */
+function normalizePrompt(raw, i) {
+  if (typeof raw === 'string') {
+    return raw === '' ? null : { id: 'legacy-' + i, keyword: '', content: raw, useCount: 0 }
+  }
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const content = typeof raw.content === 'string' ? raw.content : ''
+  if (content === '') return null
+  let id = typeof raw.id === 'string' && raw.id !== '' ? raw.id : ''
+  if (id === '') {
+    let hash = 0
+    for (const ch of content) hash = (Math.imul(hash, 31) + ch.charCodeAt(0)) | 0
+    id = 'auto-' + i + '-' + (hash >>> 0).toString(36)
+  }
+  const keyword = typeof raw.keyword === 'string' ? raw.keyword : ''
+  const useCount = Number.isFinite(raw.useCount) ? Math.max(0, Math.trunc(raw.useCount)) : 0
+  return { id, keyword, content, useCount }
+}
+
+/** 列表规范化：逐条迁移 + 按 id 去重（保留首次出现）。 */
+function normalizePrompts(list) {
+  if (!Array.isArray(list)) return []
+  const out = []
+  const seen = new Set()
+  list.forEach((raw, i) => {
+    const p = normalizePrompt(raw, i)
+    if (p === null || seen.has(p.id)) return
+    seen.add(p.id)
+    out.push(p)
+  })
+  return out
+}
+
+/**
+ * 把任意输入收敛成 v2 结构：
+ * `{ version:2, rev, updatedAt, mode, words: Prompt[], projects: {dir: Prompt[]} }`。
+ * 兼容旧版 `words: string[]`：读取时自动迁移成 v2，写回即永久 v2。
+ * 去重（按 id）、剔空、空桶丢弃等原语义保留。
  */
 function normalize(value) {
   const src = value !== null && typeof value === 'object' ? value : {}
 
-  const words = Array.isArray(src.words)
-    ? [...new Set(src.words.filter((w) => typeof w === 'string' && w !== ''))]
-    : []
+  const words = normalizePrompts(src.words)
 
   const projects = {}
   const rawProjects = src.projects !== null && typeof src.projects === 'object' && !Array.isArray(src.projects)
@@ -88,15 +129,14 @@ function normalize(value) {
     : {}
   for (const [dir, list] of Object.entries(rawProjects)) {
     if (typeof dir !== 'string' || dir === '') continue
-    if (!Array.isArray(list)) continue
-    const items = [...new Set(list.filter((w) => typeof w === 'string' && w !== ''))]
+    const items = normalizePrompts(list)
     if (items.length > 0) projects[dir] = items
   }
 
   const mode = MODES.includes(src.mode) ? src.mode : 'all'
   const rev = Number.isFinite(src.rev) ? Math.max(0, Math.trunc(src.rev)) : 0
   const updatedAt = typeof src.updatedAt === 'string' ? src.updatedAt : ''
-  return { rev, updatedAt, mode, words, projects }
+  return { version: 2, rev, updatedAt, mode, words, projects }
 }
 
 /**
@@ -136,11 +176,16 @@ async function writeState(state) {
   return next
 }
 
-/** 词表并集（保持左侧顺序），用于首轮迁移。 */
+/**
+ * 按 id 合并两个词表（保持左侧顺序），用于首轮迁移：
+ * 同 id 以 incoming（右侧）为准，右侧新条目追加到末尾。
+ * 词条的 keyword/content/useCount 随对象整体迁移，故频率在合并中不丢。
+ */
 function mergeWords(a, b) {
-  const out = [...a]
-  for (const w of b) if (!out.includes(w)) out.push(w)
-  return out
+  const byId = new Map()
+  for (const p of a) byId.set(p.id, p)
+  for (const p of b) byId.set(p.id, p)
+  return [...byId.values()]
 }
 
 /**
