@@ -231,7 +231,7 @@ window.__ModuleLoader__.load({
       '.ekeep-p-btn:disabled{opacity:.5;cursor:default}',
       '.ekeep-p-btnPrimary{background:var(--dsw-alias-state-business-primary,#4c8bf5);color:#fff;border-color:transparent;}',
       '.ekeep-p-count{font-size:12px;color:var(--dsw-alias-label-tertiary);}',
-      '.ekeep-p-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:320px;overflow-y:auto;}',
+      '.ekeep-p-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:60vh;overflow-y:auto;}',
       '.ekeep-p-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;}',
       '.ekeep-p-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}',
       '.ekeep-p-kw{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
@@ -244,11 +244,25 @@ window.__ModuleLoader__.load({
       '.ekeep-p-edit{display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;}',
       '.ekeep-p-input,.ekeep-p-textarea{box-sizing:border-box;width:100%;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5;outline:none;resize:vertical;}',
       '.ekeep-p-input{height:30px;}',
-      '.ekeep-p-textarea{min-height:96px;max-height:320px;}',
+      '.ekeep-p-textarea{min-height:120px;max-height:50vh;}',
       '.ekeep-p-input:focus,.ekeep-p-textarea:focus{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
       '.ekeep-p-fieldlabel{font-size:12px;color:var(--dsw-alias-label-secondary);}',
       '.ekeep-p-dup{font-size:12px;color:var(--dsw-alias-state-warn-label,#d89614);}',
       '.ekeep-p-empty{font-size:12px;color:var(--dsw-alias-label-tertiary);padding:8px 0;}',
+      // Settings panel shell: side tab bar + full-width pane + close button.
+      '.ekeep-set-root{display:flex;flex-direction:column;width:100%;min-height:60vh;box-sizing:border-box;}',
+      '.ekeep-set-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0 12px;}',
+      '.ekeep-set-title{font-size:16px;font-weight:600;color:var(--dsw-alias-label-primary);}',
+      '.ekeep-set-close{flex:none;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:16px;line-height:1;cursor:pointer;}',
+      '.ekeep-set-close:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+      '.ekeep-set-close:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none;}',
+      '.ekeep-set-body{display:flex;flex-direction:row;gap:16px;width:100%;min-height:0;flex:1;}',
+      '.ekeep-set-tabs{flex:0 0 auto;display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:112px;padding-right:12px;border-right:1px solid var(--dsw-alias-border-l2);}',
+      '.ekeep-set-tab{display:block;width:100%;text-align:left;padding:8px 12px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:18px;cursor:pointer;white-space:nowrap;}',
+      '.ekeep-set-tab:hover{background:var(--dsw-alias-interactive-bg-hover);}',
+      '.ekeep-set-tabActive{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2);font-weight:600;}',
+      '.ekeep-set-tab:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none;}',
+      '.ekeep-set-pane{flex:1 1 auto;min-width:0;width:100%;}',
     ].join('\n')
 
     function installWordsStyle() {
@@ -1131,64 +1145,19 @@ window.__ModuleLoader__.load({
       )
     }
 
-    // --- Center-column panel: width toggle + prompt editor --------------------
-    // This is the panel the activity-bar gear ("设置") and the plugin-detail
-    // "打开 Enkeep" action open. It MUST expose the prompt editor here too,
-    // otherwise the gear labeled 设置 shows no keyword/content editor.
-    function EnkeepPanel({ form, store }) {
-      const [, force] = React.useState(0)
-      React.useEffect(() => form.subscribe(() => force((n) => n + 1)), [form])
-      const state = form.getSnapshot()
-      const value = state.value || {}
-      const width = value.chatWidth === 'wide' ? 'wide' : 'narrow'
-      const hoursRaw = Number(value.activityWindowHours)
-      const hours = Number.isFinite(hoursRaw) && hoursRaw >= 1 ? hoursRaw : 24
-      const busy = React.useRef(false)
+    // --- Settings UI: side tab bar, one independent config page per feature ---
+    // Both the center panel (gear "设置" / plugin detail) and the global settings
+    // section share this tabbed body so every feature gets its own page instead
+    // of everything being crammed together.
+    const SETTINGS_TABS = [
+      { id: 'prompts', label: '常用提示词' },
+      { id: 'width', label: '聊天宽度' },
+      { id: 'activity', label: '活动区' },
+      { id: 'display', label: '显示与快捷栏' },
+    ]
 
-      const set = async (field, v) => {
-        if (busy.current) return
-        busy.current = true
-        try { await form.set(field, v) } finally { busy.current = false; force((n) => n + 1) }
-      }
-      const setWidth = (next) => set('chatWidth', next)
-
-      return h('div', { style: { padding: 24, maxWidth: 720 } },
-        h('h2', null, 'Enkeep'),
-        h('p', { style: { opacity: 0.75, lineHeight: 1.6 } }, '聊天区宽度设置。窄屏使用原生布局；宽屏去掉 920px 上限，并按可用列宽自适应。'),
-        h('div', { style: { marginTop: 16, display: 'flex', gap: 8 } },
-          h('button', {
-            type: 'button',
-            disabled: busy.current,
-            onClick: () => setWidth('narrow'),
-            style: { padding: '6px 14px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-l3)', background: width === 'narrow' ? 'var(--dsw-alias-bg-layer-2)' : 'transparent', color: 'inherit', cursor: 'pointer' },
-          }, '窄屏'),
-          h('button', {
-            type: 'button',
-            disabled: busy.current,
-            onClick: () => setWidth('wide'),
-            style: { padding: '6px 14px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-l3)', background: width === 'wide' ? 'var(--dsw-alias-bg-layer-2)' : 'transparent', color: 'inherit', cursor: 'pointer' },
-          }, '宽屏')),
-        h('p', { style: { marginTop: 12, fontSize: 12, opacity: 0.6 } }, `当前：${width === 'wide' ? '宽屏' : '窄屏'}。设置保存在插件配置中，重启后保持。`),
-        h('div', { style: { marginTop: 20, display: 'flex', alignItems: 'center', gap: 8 } },
-          h('span', null, '活动区时间窗（小时）'),
-          h('input', {
-            type: 'number', min: 1, max: 720, step: 1,
-            value: hours,
-            disabled: busy.current,
-            style: { width: 72, padding: '4px 6px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-l3)', background: 'transparent', color: 'inherit' },
-            onChange: (e) => {
-              const n = Number(e.target.value)
-              if (Number.isFinite(n) && n >= 1 && n <= 720) set('activityWindowHours', n)
-            },
-          }),
-          h('span', { style: { fontSize: 12, opacity: 0.6 } }, '列出更新于该时长内 / 运行中 / 未读的会话')),
-        h('div', { style: { borderTop: '1px solid var(--dsw-alias-border-l3)', paddingTop: 16 } },
-          h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '常用提示词（关键字 + 正文，正文支持多行大段文字）'),
-          h(PromptsEditor, { store })))
-    }
-
-    // Settings page: toggles + activity window via the same form.
-    function EnkeepSettings({ form, store }) {
+    function EnkeepSettingsBody({ form, store }) {
+      const [tab, setTab] = React.useState('prompts')
       const [, force] = React.useState(0)
       React.useEffect(() => form.subscribe(() => force((n) => n + 1)), [form])
       const value = form.getSnapshot().value || {}
@@ -1206,45 +1175,81 @@ window.__ModuleLoader__.load({
         try { await form.set(field, v) } finally { busy.current = false; force((n) => n + 1) }
       }
       const numStyle = { width: 72, padding: '4px 6px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-l3)', background: 'transparent', color: 'inherit' }
-      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
-        h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-          h('input', { type: 'checkbox', checked: show, onChange: (e) => set('showLauncher', e.target.checked) }),
-          h('span', null, '显示侧栏按钮')),
-        h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-          h('input', { type: 'checkbox', checked: showWords, onChange: (e) => set('showCommonWords', e.target.checked) }),
-          h('span', null, '显示常用词按钮（输入框右侧）')),
-        h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-          h('span', null, '输入框上方高频提示词数量（1~12）'),
-          h('input', {
-            type: 'number', min: 1, max: 12, step: 1,
-            value: quickN,
-            disabled: busy.current,
-            style: numStyle,
-            onChange: (e) => {
-              const n = Number(e.target.value)
-              if (Number.isFinite(n) && n >= 1 && n <= 12) set('quickPromptCount', n)
-            },
-          }),
-          h('span', { style: { fontSize: 12, opacity: 0.6 } }, '按使用频率显示前 N 个，点击即插入')),
-        h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-          h('input', { type: 'checkbox', checked: wide, onChange: (e) => set('chatWidth', e.target.checked ? 'wide' : 'narrow') }),
-          h('span', null, '宽屏聊天区（去掉 920px 上限）')),
-        h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-          h('span', null, '活动区时间窗（小时）'),
-          h('input', {
-            type: 'number', min: 1, max: 720, step: 1,
-            value: hours,
-            disabled: busy.current,
-            style: numStyle,
-            onChange: (e) => {
-              const n = Number(e.target.value)
-              if (Number.isFinite(n) && n >= 1 && n <= 720) set('activityWindowHours', n)
-            },
-          }),
-          h('span', { style: { fontSize: 12, opacity: 0.6 } }, '列出更新于该时长内 / 运行中 / 未读的会话')),
-        h('div', { style: { borderTop: '1px solid var(--dsw-alias-border-l3)', paddingTop: 16 } },
-          h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '常用提示词（关键字 + 正文，正文支持多行大段文字）'),
-          h(PromptsEditor, { store })))
+      const choice = (active, label, onClick) => h('button', {
+        type: 'button', disabled: busy.current, onClick,
+        style: { padding: '6px 14px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-l3)', background: active ? 'var(--dsw-alias-bg-layer-2)' : 'transparent', color: 'inherit', cursor: 'pointer' },
+      }, label)
+
+      let pane
+      if (tab === 'prompts') {
+        pane = h(PromptsEditor, { store })
+      } else if (tab === 'width') {
+        pane = h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+          h('div', { style: { fontWeight: 600 } }, '聊天区宽度'),
+          h('p', { style: { opacity: 0.75, lineHeight: 1.6, margin: 0 } }, '窄屏使用原生布局；宽屏去掉 920px 上限，并按可用列宽自适应。'),
+          h('div', { style: { display: 'flex', gap: 8 } },
+            choice(!wide, '窄屏', () => set('chatWidth', 'narrow')),
+            choice(wide, '宽屏', () => set('chatWidth', 'wide'))),
+          h('p', { style: { fontSize: 12, opacity: 0.6, margin: 0 } }, `当前：${wide ? '宽屏' : '窄屏'}。设置保存在插件配置中，重启后保持。`))
+      } else if (tab === 'activity') {
+        pane = h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+          h('div', { style: { fontWeight: 600 } }, '活动区时间窗'),
+          h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+            h('span', null, '时间窗（小时）'),
+            h('input', {
+              type: 'number', min: 1, max: 720, step: 1, value: hours, disabled: busy.current, style: numStyle,
+              onChange: (e) => {
+                const n = Number(e.target.value)
+                if (Number.isFinite(n) && n >= 1 && n <= 720) set('activityWindowHours', n)
+              },
+            }),
+            h('span', { style: { fontSize: 12, opacity: 0.6 } }, '列出更新于该时长内 / 运行中 / 未读的会话')))
+      } else {
+        pane = h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+          h('div', { style: { fontWeight: 600 } }, '显示与快捷栏'),
+          h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            h('input', { type: 'checkbox', checked: show, onChange: (e) => set('showLauncher', e.target.checked) }),
+            h('span', null, '显示侧栏按钮')),
+          h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            h('input', { type: 'checkbox', checked: showWords, onChange: (e) => set('showCommonWords', e.target.checked) }),
+            h('span', null, '显示常用词按钮（输入框右侧）')),
+          h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+            h('span', null, '高频提示词数量（1~12）'),
+            h('input', {
+              type: 'number', min: 1, max: 12, step: 1, value: quickN, disabled: busy.current, style: numStyle,
+              onChange: (e) => {
+                const n = Number(e.target.value)
+                if (Number.isFinite(n) && n >= 1 && n <= 12) set('quickPromptCount', n)
+              },
+            }),
+            h('span', { style: { fontSize: 12, opacity: 0.6 } }, '按使用频率显示前 N 个，点击即插入')))
+      }
+
+      return h('div', { className: 'ekeep-set-body' },
+        h('nav', { className: 'ekeep-set-tabs' }, SETTINGS_TABS.map((t) => h('button', {
+          key: t.id, type: 'button',
+          className: 'ekeep-set-tab' + (tab === t.id ? ' ekeep-set-tabActive' : ''),
+          onClick: () => setTab(t.id),
+          title: t.label,
+        }, t.label))),
+        h('div', { className: 'ekeep-set-pane' }, pane))
+    }
+
+    // Center-column panel opened by the activity-bar gear ("设置") and the
+    // plugin-detail action. onClose calls layout.selectPanel(null) -> conversation.
+    function EnkeepPanel({ form, store, onClose }) {
+      return h('div', { className: 'ekeep-set-root' },
+        h('div', { className: 'ekeep-set-head' },
+          h('span', { className: 'ekeep-set-title' }, 'Enkeep 设置'),
+          typeof onClose === 'function'
+            ? h('button', { type: 'button', className: 'ekeep-set-close', onClick: onClose, title: '关闭设置（返回对话）', 'aria-label': '关闭设置' }, '✕')
+            : null),
+        h(EnkeepSettingsBody, { form, store }))
+    }
+
+    // Global settings-page section reuses the same tabbed body.
+    function EnkeepSettings({ form, store }) {
+      return h(EnkeepSettingsBody, { form, store })
     }
 
     return {
@@ -1282,11 +1287,15 @@ window.__ModuleLoader__.load({
         if (typeof ctx.inject === 'function') {
           ctx.inject(['layout'], (layoutCtx) =>
             layoutCtx.slots.inject('main', () => {
+              const closePanel = () => {
+                const l = layoutCtx.layout
+                if (l && typeof l.selectPanel === 'function') l.selectPanel(null)
+              }
               const unregisterPage = layoutCtx.slots.register({
                 name: 'main',
                 key: PANEL_ID,
-                inject: () => ({ form, store: wordStore }),
-              }, ({ form: f, store: s }) => h(EnkeepPanel, { form: f, store: s }))
+                inject: () => ({ form, store: wordStore, onClose: closePanel }),
+              }, ({ form: f, store: s, onClose }) => h(EnkeepPanel, { form: f, store: s, onClose }))
 
               let stopSidebar = null
               const sync = () => {
