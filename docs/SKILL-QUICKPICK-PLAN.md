@@ -29,7 +29,7 @@
 |  - 扫四个技能目录        | <--------> |  - 「技能」独立分区：列 name/desc   |
 |  - 读 SKILL.md 的       |  JSON      |  - 「＋收藏」→ wordStore.upsert      |
 |    name/description     |            |      { keyword, content:'/name ' }  |
-|  - legacy keys / 布尔   |            |  - 收藏后走常用词/快捷条插入          |
+|  - legacy keys / 布尔   |            |  - 点技能名→直接插入；收藏可选        |
 |    假值 / 必填校验过滤 |            |  - 独立分区，不进 WORDS_MODES        |
 +-------------------------+            +-------------------------------------+
                                                 |
@@ -102,18 +102,20 @@
 
 ---
 
-## 3. 步骤三：面板内「技能」来源与收藏
+## 3. 步骤三：面板内「技能」分区（直接插入 + 可选收藏）
 
 ### 功能
 在 `CommonWords` 面板里新增一个**独立的「技能」分区**——它是一个 tab/视图切换（面板内新增 `view` state：`'words' | 'skills'`），**不进 `WORDS_MODES` 枚举、不写 localStorage**；现有「全部/全局/当前」显示范围保持不动：
 - 列出 `skills` 的 `name` 与 `description`（title 提示全文）。
-- 每条右侧一个「＋收藏」按钮：调用 `wordStore.upsert({ keyword: name, content: '/'+name+' ', useCount: 0 }, 'global'|'project', projectKey)`（尾空格分隔手势与后续输入）。
+- **技能名本身是可点击按钮**：点击立即把 `/name ` 插入输入框（主路径，无需先收藏）。
+- 每条右侧一个「＋收藏」**可选**按钮：调用 `wordStore.upsert({ keyword: name, content: '/'+name+' ', useCount: 0 }, 'global'|'project', projectKey)`（尾空格分隔手势与后续输入），目的是让该技能长期留在词库、进入快捷提示条、跨端同步并累计使用频率。
 - 已收藏态按词库中存在 `content === '/'+name+' '` 的条目判断，显示「已收藏」并禁用重复收藏。
-- 分区顶部提供「刷新技能」按钮（重新 fetch）。
+- 分区提供「刷新」按钮（重新 fetch）。
 
 ### 技术
 - 复用 `wordStore.upsert` / `getSnapshot`；**id 由 store 自动生成**（稳定唯一），不手工拼 id。
-- 显示样式复用 `ekeep-w-*` 类（`ekeep-w-list` / `ekeep-w-row` 等），只新增必要的「技能」分区标识与收藏按钮样式，沿用现有主题 token。
+- 直接插入：未收藏时走新增的 `wordStore.insertContent(content)`（直接调已注册的 inserter）；已收藏时复用 `wordStore.insert(id)` 以便 `useCount+1`。两者最终都落到同一个 `inputActions.setDraft`。
+- 显示样式复用 `ekeep-w-*` 类（`ekeep-w-word` / `ekeep-w-row` 等），技能名按钮叠加 `ekeep-w-skillName`，沿用现有主题 token。
 - 收藏目标桶跟随当前 `state.mode`（global → 全局，current/all → 当前项目），与现有「＋添加」行为完全一致。
 - **不新增搜索框**（用户决定）：技能列表按 name 排序直接滚动浏览。
 
@@ -135,11 +137,12 @@
 ## 4. 步骤四：插入手势与端到端打通
 
 ### 功能
-- 点击收藏后的技能 Prompt（无论来自快捷提示条还是面板列表），走既有 `wordStore.insert(id)` → inserter → `inputActions.setDraft` 链路，把 `/skill-name ` 插入输入框。
+- 在「技能」分区点技能名：`/skill-name ` 立即插入输入框（收藏与否都可用）。
+- 收藏后，该技能也会出现在快捷提示条与常用词列表，点击同样插入。
 - 用户补齐正文并发送，DSH 原生加载对应技能。
 
 ### 技术
-- **不写新的插入代码**：`QuickPrompts` 与 `CommonWords` 已各自注册 inserter，`wordStore.insert` 会把 `content`（即 `/name `，含尾空格）追加到 draft（现有 `base + sep + content` 逻辑，sep 保证词间空格）。
+- 两条插入路径共用同一个已注册 inserter：`未收藏 → wordStore.insertContent('/name ')`；`已收藏 → wordStore.insert(id)`（顺带 `useCount+1`）。快捷提示条/常用词列表仍走 `wordStore.insert(id)`。最终都是 `base + sep + content`（sep 保证词间空格，skillContent 自带尾空格）。
 - 需要确认 `inputActions.setDraft` 对「以 `/` 开头的纯手势文本」不转义、不拦截（参照 skill-picker 的成功先例：它就是这么做且已上线可用）。
 
 ### 完成标准
@@ -149,6 +152,7 @@
 
 ### 验收
 - mock `inputActions.setDraft`：断言收到文本包含 `/技能名 `；连续两次点击得到 `'/a /b '` 形态。
+- mock 技能行点击：未收藏点技能名 → 插入且不写库；收藏后点技能名 → 插入且 `useCount+1`。
 - 全量回归：常用词增删改、快捷栏 top-N、设置页、活动区（置顶/归档/重命名）、宽度隔离全部通过。
 - **真实浏览器验收（用户侧）**：**先重启 dsh web**（宿主路由新增）→ 刷新页面 → 打开「词」面板 → 切到「技能」分区 → 收藏一个技能 → 点 chip → 输入框出现 `/技能名` → 发送 → 确认技能内容随消息加载。（本环境无 DOM/截图能力，此项需用户确认。）
 

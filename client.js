@@ -1184,7 +1184,14 @@ window.__ModuleLoader__.load({
         })()
       }
 
-      return { subscribe, getSnapshot, registerInserter, insert, upsert, remove, resetCount, resetAllCounts, setMode, addToGlobal }
+      // Insert arbitrary text through the registered composer inserter without
+      // requiring an existing library entry (used by unfavorited skill rows).
+      const insertContent = (content) => {
+        if (typeof inserter !== 'function') return
+        try { inserter(content) } catch (e) { console.warn('[enkeep] prompt insert failed', e) }
+      }
+
+      return { subscribe, getSnapshot, registerInserter, insert, insertContent, upsert, remove, resetCount, resetAllCounts, setMode, addToGlobal }
     }
     const wordStore = createWordStore()
 
@@ -1383,10 +1390,19 @@ window.__ModuleLoader__.load({
       // The trailing space mirrors the official picker: it delimits the gesture
       // so typing immediately after the chip never merges into the skill name.
       const skillContent = (name) => '/' + name + ' '
-      const isSkillFavorited = (name) => {
+      const findSkillPrompt = (name) => {
         const content = skillContent(name)
-        return state.global.some((p) => p.content === content) ||
-          Object.values(state.projects).some((list) => list.some((p) => p.content === content))
+        return state.global.find((p) => p.content === content) ||
+          Object.values(state.projects).flat().find((p) => p.content === content)
+      }
+      const isSkillFavorited = (name) => findSkillPrompt(name) !== undefined
+      // Clicking a skill row inserts the gesture immediately — favoriting is
+      // optional. Reuse insert() when already favorited so useCount increments;
+      // otherwise push the text straight through the shared inserter.
+      const insertSkill = (name) => {
+        const found = findSkillPrompt(name)
+        if (found) wordStore.insert(found.id)
+        else wordStore.insertContent(skillContent(name))
       }
       const favoriteSkill = (name) => {
         if (isSkillFavorited(name)) return
@@ -1442,7 +1458,12 @@ window.__ModuleLoader__.load({
               : h('ul', { className: 'ekeep-w-list' }, skills.map((s) => {
                 const faved = isSkillFavorited(s.name)
                 return h('li', { key: s.name, className: 'ekeep-w-row' },
-                  h('span', { className: 'ekeep-w-skillName', title: s.description || s.name }, '/' + s.name),
+                  h('button', {
+                    type: 'button', className: 'ekeep-w-word ekeep-w-skillName',
+                    title: '插入 /' + s.name + (s.description ? ' — ' + s.description : ''),
+                    onMouseDown: (e) => e.preventDefault(),
+                    onClick: () => insertSkill(s.name),
+                  }, '/' + s.name),
                   s.description ? h('span', { className: 'ekeep-w-skillDesc', title: s.description }, s.description) : null,
                   h('div', { className: 'ekeep-w-skillTools' },
                     h('button', {
