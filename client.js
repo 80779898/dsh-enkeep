@@ -22,6 +22,13 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     const h = React.createElement
+    // react-dom is a platform seed word in the web frontend; createPortal is the
+    // official DSH dialog pattern. Guarded so non-DOM contexts still render.
+    let ReactDOM = null
+    try { ReactDOM = require('react-dom') } catch (e) { ReactDOM = null }
+    const portalToBody = (node) => (node && ReactDOM && typeof document !== 'undefined' && document.body)
+      ? ReactDOM.createPortal(node, document.body)
+      : node
 
     const NAMESPACE = 'enkeep'
     const PANEL_ID = 'enkeep'
@@ -719,15 +726,18 @@ window.__ModuleLoader__.load({
                 'aria-label': it.pinned ? '取消置顶' : '置顶',
                 onClick: (e) => { e.stopPropagation(); togglePin(it.id) },
               }, h(HeaderIcon, { kind: it.pinned ? 'unpin' : 'pin' }))))),
-        // Dialogs live inside the bar root so pointer-events:auto applies.
-        confirmArchive ? h('div', { 'data-enkeep-modal-mask': true, onClick: () => setConfirmArchive(null) },
+        // Dialogs are portaled to document.body: the bar root carries a CSS
+        // transform (drag offset), which would otherwise make position:fixed
+        // resolve against the 300px bar instead of the viewport, and would trap
+        // z-index inside the overlay layer. Portaling escapes both.
+        portalToBody(confirmArchive ? h('div', { 'data-enkeep-modal-mask': true, onClick: () => setConfirmArchive(null) },
           h('div', { 'data-enkeep-modal': true, onClick: (e) => e.stopPropagation() },
             h('strong', null, '归档会话'),
             h('p', null, '确定归档会话「' + confirmArchive.title + '」？归档后可在工作区取消归档。'),
             h('div', { 'data-enkeep-modal-actions': true },
               h('button', { type: 'button', onClick: () => setConfirmArchive(null) }, '取消'),
-              h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: confirmArchiveAction }, '确定归档')))) : null,
-        renameTarget ? h('div', { 'data-enkeep-modal-mask': true, onClick: () => setRenameTarget(null) },
+              h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: confirmArchiveAction }, '确定归档')))) : null),
+        portalToBody(renameTarget ? h('div', { 'data-enkeep-modal-mask': true, onClick: () => setRenameTarget(null) },
           h('div', { 'data-enkeep-modal': true, onClick: (e) => e.stopPropagation() },
             h('strong', null, '重命名会话'),
             h('input', {
@@ -739,7 +749,7 @@ window.__ModuleLoader__.load({
             }),
             h('div', { 'data-enkeep-modal-actions': true },
               h('button', { type: 'button', onClick: () => setRenameTarget(null) }, '取消'),
-              h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: confirmRenameAction }, '确定')))) : null)
+              h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: confirmRenameAction }, '确定')))) : null))
     }
 
     // --- Common words / structured prompts (ported from dsh-wordbox, upgraded) --
