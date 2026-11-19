@@ -824,10 +824,13 @@ window.__ModuleLoader__.load({
       return store.getSnapshot()
     }
 
-    // A word row in the panel: keyword (or content preview) + marquee on hover,
-    // delete + optional "to global". Clicking inserts the FULL content.
+    // A word row in the panel: show the FULL content so long multi-line prompts
+    // are readable. Marquee on hover reveals the tail when it overflows.
+    // Keyword (when present) is shown as a leading tag; it never replaces the
+    // body. The 8-char truncation is only for the space-limited quick chips.
     function WordsRow({ prompt, showToGlobal, alreadyGlobal, onInsert, onRemove, onAddToGlobal }) {
-      const label = promptLabel(prompt)
+      const hasKw = typeof prompt.keyword === 'string' && prompt.keyword.trim() !== ''
+      const label = hasKw ? prompt.keyword + '：' + prompt.content : prompt.content
       const [hovered, setHovered] = React.useState(false)
       const [overflow, setOverflow] = React.useState(0)
       const btnRef = React.useRef(null)
@@ -1128,8 +1131,11 @@ window.__ModuleLoader__.load({
       )
     }
 
-    // --- Center-column panel: width toggle + short usage note ----------------
-    function EnkeepPanel({ form }) {
+    // --- Center-column panel: width toggle + prompt editor --------------------
+    // This is the panel the activity-bar gear ("设置") and the plugin-detail
+    // "打开 Enkeep" action open. It MUST expose the prompt editor here too,
+    // otherwise the gear labeled 设置 shows no keyword/content editor.
+    function EnkeepPanel({ form, store }) {
       const [, force] = React.useState(0)
       React.useEffect(() => form.subscribe(() => force((n) => n + 1)), [form])
       const state = form.getSnapshot()
@@ -1175,7 +1181,10 @@ window.__ModuleLoader__.load({
               if (Number.isFinite(n) && n >= 1 && n <= 720) set('activityWindowHours', n)
             },
           }),
-          h('span', { style: { fontSize: 12, opacity: 0.6 } }, '列出更新于该时长内 / 运行中 / 未读的会话')))
+          h('span', { style: { fontSize: 12, opacity: 0.6 } }, '列出更新于该时长内 / 运行中 / 未读的会话')),
+        h('div', { style: { borderTop: '1px solid var(--dsw-alias-border-l3)', paddingTop: 16 } },
+          h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '常用提示词（关键字 + 正文，正文支持多行大段文字）'),
+          h(PromptsEditor, { store })))
     }
 
     // Settings page: toggles + activity window via the same form.
@@ -1276,8 +1285,8 @@ window.__ModuleLoader__.load({
               const unregisterPage = layoutCtx.slots.register({
                 name: 'main',
                 key: PANEL_ID,
-                inject: () => ({ form }),
-              }, ({ form: f }) => h(EnkeepPanel, { form: f }))
+                inject: () => ({ form, store: wordStore }),
+              }, ({ form: f, store: s }) => h(EnkeepPanel, { form: f, store: s }))
 
               let stopSidebar = null
               const sync = () => {
