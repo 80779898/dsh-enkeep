@@ -87,7 +87,7 @@ window.__ModuleLoader__.load({
       '[data-enkeep-activity-bar]{',
       'position:absolute;top:calc(var(--dsh-frame-overlay-top, 0px) + 8px);',
       'right:calc(var(--dsh-windows-sidebar-width, var(--dsh-sidebar-width, 260px)) + var(--dsh-sidebar-inline-padding, 12px) + 8px);',
-      'width:300px;max-width:calc(100vw - 32px);z-index:40;',
+      'width:380px;max-width:calc(100vw - 32px);z-index:40;',
       'display:flex;flex-direction:column;gap:4px;padding:8px;',
       'border:1px solid var(--dsw-alias-border-l3);border-radius:10px;',
       'background:color-mix(in srgb, var(--dsw-alias-bg-layer-2, #202124) 94%, #000);',
@@ -125,11 +125,15 @@ window.__ModuleLoader__.load({
       '[data-enkeep-activity-item][data-enkeep-pinned]{',
       'box-shadow:inset 2px 0 0 var(--dsw-alias-state-business-primary, #4c8bf5);',
       'background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 8%, transparent);}',
-      // Row action buttons: hidden until hover / keyboard focus within the row.
-      '[data-enkeep-activity-row-actions]{display:flex;align-items:center;gap:1px;',
-      'flex:none;padding-right:4px;opacity:0;transition:opacity .12s ease;}',
+      // Row action buttons: display:none by default so they take NO horizontal
+      // space — the label (flex:1) owns the full row and shows untruncated.
+      // Official workspace rows do exactly this: .rowActions{display:none},
+      // shown as inline-flex only on :hover / :focus-within. Using opacity:0
+      // instead would keep the buttons occupying width and truncate the title.
+      '[data-enkeep-activity-row-actions]{display:none;align-items:center;gap:1px;',
+      'flex:none;padding-right:4px;}',
       '[data-enkeep-activity-item]:hover [data-enkeep-activity-row-actions],',
-      '[data-enkeep-activity-item]:focus-within [data-enkeep-activity-row-actions]{opacity:1;}',
+      '[data-enkeep-activity-item]:focus-within [data-enkeep-activity-row-actions]{display:inline-flex;}',
       '[data-enkeep-row-action]{border:0;background:transparent;color:inherit;cursor:pointer;',
       'width:20px;height:20px;border-radius:5px;padding:0;',
       'display:inline-flex;align-items:center;justify-content:center;}',
