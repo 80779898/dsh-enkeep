@@ -4,3 +4,4 @@
       config:
         chatWidth: wide
         showLauncher: true
+        activityWindowHours: 24
