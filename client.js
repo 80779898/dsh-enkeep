@@ -170,6 +170,7 @@ window.__ModuleLoader__.load({
       'box-shadow:0 12px 40px rgba(0,0,0,.5);font-size:13px;}',
       '[data-enkeep-modal] strong{font-size:14px;}',
       '[data-enkeep-modal] p{margin:0;line-height:1.6;opacity:.85;}',
+      '[data-enkeep-modal-error]{color:var(--dsw-alias-state-danger-label, #d9534f);opacity:1;}',
       '[data-enkeep-rename-input]{width:100%;box-sizing:border-box;padding:7px 9px;',
       'border:1px solid var(--dsw-alias-border-l3);border-radius:6px;',
       'background:var(--dsw-alias-bg-layer-1, #1a1b1c);color:inherit;font-size:13px;}',
@@ -505,9 +506,29 @@ window.__ModuleLoader__.load({
       // Pinned set + dialogs (row actions).
       const [pinned, setPinnedState] = React.useState(readPinned)
       const [confirmArchive, setConfirmArchive] = React.useState(null) // { id, title }
+      const [stopArchiveTarget, setStopArchiveTarget] = React.useState(null) // { id, title } — running session
+      const [archiveError, setArchiveError] = React.useState(null) // string
       const [renameTarget, setRenameTarget] = React.useState(null) // { id, title }
       const [renameDraft, setRenameDraft] = React.useState('')
+      const [renameError, setRenameError] = React.useState('')
       const setPinned = (ids) => { setPinnedState(ids); writePinned(ids) }
+      // Archive success must drop the id from our pinned set even across a slow
+      // async call — functional update avoids a stale `pinned` closure.
+      const unpinLocal = (id) => {
+        setPinnedState((prev) => {
+          const next = prev.filter((x) => x !== id)
+          writePinned(next)
+          return next
+        })
+      }
+      // Official marks a running-session archive refusal with a stable error name
+      // + rpc code (bundles don't share error-class identity) — detect by field.
+      const isSessionActiveError = (err) => {
+        if (!err || typeof err !== 'object') return false
+        const rpc = err.rpcError || {}
+        return rpc.code === 'workspace/session-active'
+      }
+      const errMessage = (err, fallback) => (err && err.message ? err.message : fallback)
 
       // Run a header action with a shared busy guard (ref: immune to rapid double-clicks).
       const runAction = (fn) => async () => {
@@ -606,35 +627,67 @@ window.__ModuleLoader__.load({
           setPinned(isPinned ? pinned.filter((x) => x !== id) : [id].concat(pinned.filter((x) => x !== id)))
         } finally { busyRef.current = false; setBusy(false) }
       }
-      const askArchive = (id, title) => { if (rowActionGuard('archive:' + id)) setConfirmArchive({ id, title }) }
-      const confirmArchiveAction = () => {
+      const askArchive = (id, title) => {
+        if (!rowActionGuard('archive:' + id)) return
+        setArchiveError(null)
+        setConfirmArchive({ id, title })
+      }
+      // Archive: try normal archive first. A running session is refused by the
+      // Host with workspace/session-active — surface a second, explicit confirm
+      // that stops work and archives (stopActivity:true), matching official UX.
+      // On success drop the id from our pinned set (functional update, no stale
+      // closure). Any other failure shows a visible error instead of silence.
+      const confirmArchiveAction = async () => {
         const target = confirmArchive
         setConfirmArchive(null)
-        if (!target || typeof archiveSession !== 'function') return
-        if (busyRef.current) return
+        if (!target || typeof archiveSession !== 'function' || busyRef.current) return
         busyRef.current = true
         setBusy(true)
-        try { Promise.resolve(archiveSession(target.id)).catch((err) => console.warn('[enkeep] archive failed', err)) }
-        catch (err) { console.warn('[enkeep] archive failed', err) }
-        finally { busyRef.current = false; setBusy(false) }
+        try {
+          await archiveSession(target.id)
+          unpinLocal(target.id)
+        } catch (err) {
+          console.warn('[enkeep] archive failed', err)
+          if (isSessionActiveError(err)) setStopArchiveTarget(target)
+          else setArchiveError('归档失败：' + errMessage(err, '请稍后重试'))
+        } finally { busyRef.current = false; setBusy(false) }
+      }
+      const confirmStopArchiveAction = async () => {
+        const target = stopArchiveTarget
+        setStopArchiveTarget(null)
+        if (!target || typeof archiveSession !== 'function' || busyRef.current) return
+        busyRef.current = true
+        setBusy(true)
+        try {
+          await archiveSession(target.id, { stopActivity: true })
+          unpinLocal(target.id)
+        } catch (err) {
+          console.warn('[enkeep] stop-and-archive failed', err)
+          setArchiveError('停止并归档失败：' + errMessage(err, '请稍后重试'))
+        } finally { busyRef.current = false; setBusy(false) }
       }
       const askRename = (id, title) => {
         if (!rowActionGuard('rename:' + id)) return
+        setRenameError('')
         setRenameTarget({ id, title })
         setRenameDraft(title || '')
       }
-      const confirmRenameAction = () => {
+      const confirmRenameAction = async () => {
         const target = renameTarget
         const next = renameDraft.trim()
-        setRenameTarget(null)
-        if (!target || !next || next === (target.title || '')) return
-        if (typeof renameSession !== 'function') return
-        if (busyRef.current) return
+        if (!target || !next || next === (target.title || '')) { setRenameTarget(null); setRenameError(''); return }
+        if (typeof renameSession !== 'function' || busyRef.current) return
+        setRenameError('')
         busyRef.current = true
         setBusy(true)
-        try { Promise.resolve(renameSession(target.id, next)).catch((err) => console.warn('[enkeep] rename failed', err)) }
-        catch (err) { console.warn('[enkeep] rename failed', err) }
-        finally { busyRef.current = false; setBusy(false) }
+        try {
+          await renameSession(target.id, next)
+          setRenameTarget(null)
+        } catch (err) {
+          console.warn('[enkeep] rename failed', err)
+          // Keep the dialog open so the user sees the error and can retry.
+          setRenameError('重命名失败：' + errMessage(err, '请稍后重试'))
+        } finally { busyRef.current = false; setBusy(false) }
       }
 
       const sessions = useSessions ? useSessions((s) => s) : undefined
@@ -644,7 +697,7 @@ window.__ModuleLoader__.load({
       const pinnedSet = new Set(pinned)
       const items = selectActivity(sessions, statuses, archived, hours, Date.now(), pinnedSet)
 
-      if (items.length === 0 && !confirmArchive && !renameTarget) return null
+      if (items.length === 0 && !confirmArchive && !stopArchiveTarget && !archiveError && !renameTarget) return null
 
       return h('div', {
         'data-enkeep-activity-bar': true,
@@ -741,6 +794,21 @@ window.__ModuleLoader__.load({
             h('div', { 'data-enkeep-modal-actions': true },
               h('button', { type: 'button', onClick: () => setConfirmArchive(null) }, '取消'),
               h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: confirmArchiveAction }, '确定归档')))) : null),
+        // Second confirm for a running session refused with workspace/session-active.
+        portalToBody(stopArchiveTarget ? h('div', { 'data-enkeep-modal-mask': true, onClick: () => setStopArchiveTarget(null) },
+          h('div', { 'data-enkeep-modal': true, onClick: (e) => e.stopPropagation() },
+            h('strong', null, '会话正在运行'),
+            h('p', null, '会话「' + stopArchiveTarget.title + '」仍在进行工作。是否停止其工作并归档？（取消则不改动）'),
+            h('div', { 'data-enkeep-modal-actions': true },
+              h('button', { type: 'button', onClick: () => setStopArchiveTarget(null) }, '取消'),
+              h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: confirmStopArchiveAction }, '停止并归档')))) : null),
+        // Generic visible failure (archive / stop-and-archive) — never silent.
+        portalToBody(archiveError ? h('div', { 'data-enkeep-modal-mask': true, onClick: () => setArchiveError(null) },
+          h('div', { 'data-enkeep-modal': true, onClick: (e) => e.stopPropagation() },
+            h('strong', null, '操作失败'),
+            h('p', { 'data-enkeep-modal-error': true }, archiveError),
+            h('div', { 'data-enkeep-modal-actions': true },
+              h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: () => setArchiveError(null) }, '确定')))) : null),
         portalToBody(renameTarget ? h('div', { 'data-enkeep-modal-mask': true, onClick: () => setRenameTarget(null) },
           h('div', { 'data-enkeep-modal': true, onClick: (e) => e.stopPropagation() },
             h('strong', null, '重命名会话'),
@@ -751,6 +819,7 @@ window.__ModuleLoader__.load({
               onChange: (e) => setRenameDraft(e.target.value),
               onKeyDown: (e) => { if (e.key === 'Enter') confirmRenameAction(); else if (e.key === 'Escape') setRenameTarget(null) },
             }),
+            renameError ? h('p', { 'data-enkeep-modal-error': true }, renameError) : null,
             h('div', { 'data-enkeep-modal-actions': true },
               h('button', { type: 'button', onClick: () => setRenameTarget(null) }, '取消'),
               h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: confirmRenameAction }, '确定')))) : null))
@@ -1665,9 +1734,13 @@ window.__ModuleLoader__.load({
             if (uiWorkspace && typeof uiWorkspace.unpinSession === 'function') return uiWorkspace.unpinSession(id)
             console.warn('[enkeep] uiWorkspace.unpinSession unavailable'); return undefined
           }
-          const archiveSession = (id) => {
+          // options (e.g. { stopActivity: true }) are forwarded so a running
+          // session can be stopped+archived from the second-confirm dialog.
+          const archiveSession = (id, options) => {
             const uiWorkspace = get('uiWorkspace')
-            if (uiWorkspace && typeof uiWorkspace.archiveSession === 'function') return uiWorkspace.archiveSession(id)
+            if (uiWorkspace && typeof uiWorkspace.archiveSession === 'function') {
+              return options === undefined ? uiWorkspace.archiveSession(id) : uiWorkspace.archiveSession(id, options)
+            }
             console.warn('[enkeep] uiWorkspace.archiveSession unavailable'); return undefined
           }
           // Rename uses the public low-level sessions.using(...).rename path —
