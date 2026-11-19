@@ -5,3 +5,4 @@
         chatWidth: wide
         showLauncher: true
         activityWindowHours: 24
+        showCommonWords: true

@@ -168,6 +168,63 @@ window.__ModuleLoader__.load({
       return () => style.remove()
     }
 
+    // --- Common words panel CSS (ported from dsh-wordbox, renamed prefix) -----
+    // Prefix ekeep-w- so it can never collide with cwbx_* / data-enkeep-*.
+    // NOTE: width isolation — the panel only ever reads the composer card rect
+    // and writes its OWN inline style; it never touches the chat width vars.
+    const WORDS_STYLE_ID = 'enkeep-words'
+    const WORDS_CSS = [
+      '.ekeep-w-root{position:relative;display:inline-flex;align-items:center;flex:none}',
+      '.ekeep-w-trigger{height:28px;min-width:28px;box-sizing:border-box;padding:0 7px;display:inline-flex;align-items:center;justify-content:center;gap:3px;border:none;border-radius:24px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;outline:none}',
+      '.ekeep-w-trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}',
+      '.ekeep-w-trigger:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
+      '.ekeep-w-chevron{color:var(--dsw-alias-label-caption);transition:transform .12s}',
+      '.ekeep-w-chevronOpen{transform:rotate(180deg)}',
+      '.ekeep-w-panel{position:fixed;z-index:40;box-sizing:border-box;max-height:min(500px,calc(100vh - 120px));border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;overflow:hidden;animation:ekeep-w-slideUp .14s ease-out}',
+      '@keyframes ekeep-w-slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}',
+      '.ekeep-w-list{list-style:none;margin:0;padding:0;flex:0 1 auto;min-height:0;max-height:340px;overflow-y:auto}',
+      '.ekeep-w-row{display:flex;align-items:center;gap:4px;border-radius:8px;min-height:34px}',
+      '.ekeep-w-row:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.ekeep-w-word{flex:auto;min-width:0;box-sizing:border-box;height:34px;padding:7px 4px 7px 10px;border:none;background:transparent;color:var(--dsw-alias-label-primary);text-align:left;font-size:13px;line-height:20px;cursor:pointer;overflow:hidden}',
+      '.ekeep-w-wordText{display:inline-block;white-space:nowrap;vertical-align:top;transition:transform .25s ease-out}',
+      '.ekeep-w-word:focus-visible{outline:2px solid var(--dsw-alias-border-l3);outline-offset:-2px;border-radius:8px}',
+      '.ekeep-w-del{flex:none;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;font-size:14px;line-height:1;opacity:0;transition:opacity .1s}',
+      '.ekeep-w-row:hover .ekeep-w-del,.ekeep-w-del:focus-visible{opacity:1}',
+      '.ekeep-w-del:hover{background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary)}',
+      '.ekeep-w-del:focus-visible{outline:2px solid var(--dsw-alias-border-l3);outline-offset:-2px}',
+      '.ekeep-w-toGlobal{flex:none;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;opacity:0;transition:opacity .1s}',
+      '.ekeep-w-row:hover .ekeep-w-toGlobal,.ekeep-w-toGlobal:focus-visible{opacity:1}',
+      '.ekeep-w-toGlobal:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.ekeep-w-toGlobal:focus-visible{outline:2px solid var(--dsw-alias-border-l3);outline-offset:-2px}',
+      '.ekeep-w-empty{color:var(--dsw-alias-label-tertiary);padding:10px;font-size:13px;line-height:20px}',
+      '.ekeep-w-addRow{display:flex;align-items:center;gap:6px;padding:4px 2px;flex:none}',
+      '.ekeep-w-addInput{flex:auto;min-width:0;box-sizing:border-box;height:28px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px;outline:none}',
+      '.ekeep-w-addInput:focus{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
+      '.ekeep-w-addConfirm{flex:none;height:28px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-size:12px;font-weight:500;cursor:pointer}',
+      '.ekeep-w-addConfirm:hover:not(:disabled){border-color:var(--dsw-alias-border-l3)}',
+      '.ekeep-w-addConfirm:disabled{opacity:.5;cursor:default}',
+      '.ekeep-w-actions{flex:none;display:flex;align-items:center;gap:6px;padding:2px 2px 2px}',
+      '.ekeep-w-add{height:24px;padding:0 8px;border:none;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:24px;cursor:pointer;margin-right:auto}',
+      '.ekeep-w-add:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.ekeep-w-modes{flex:none;display:inline-flex;align-items:center;gap:2px}',
+      '.ekeep-w-mode{height:22px;padding:0 5px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:22px;cursor:pointer;outline:none}',
+      '.ekeep-w-mode:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
+      '.ekeep-w-mode:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}',
+      '.ekeep-w-modeActive{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}',
+    ].join('\n')
+
+    function installWordsStyle() {
+      if (typeof document === 'undefined') return () => {}
+      const existing = document.querySelector(`style[data-plugin-css="${WORDS_STYLE_ID}"]`)
+      if (existing) return () => {}
+      const style = document.createElement('style')
+      style.dataset.plugin = 'dsh-enkeep'
+      style.dataset.pluginCss = WORDS_STYLE_ID
+      style.textContent = WORDS_CSS
+      document.head.appendChild(style)
+      return () => style.remove()
+    }
+
     // --- Activity selection (pure) -------------------------------------------
     // 三类命中任一即入选：N 小时内更新 / 运行中 / 未读完成(completionUnread)。
     // 排除 blank、subagent 子行、归档会话。返回按 SessionId 字典序的有限列表（稳定不重排）。
@@ -364,6 +421,425 @@ window.__ModuleLoader__.load({
             it.current ? h('span', { 'data-enkeep-current-badge': true }, '当前') : null)))
     }
 
+    // --- Common words (ported from dsh-wordbox) --------------------------------
+    // localStorage keys — enkeep-owned, isolated from wordbox's dsh.common-word-box.*
+    const WORDS_GLOBAL_KEY = 'dsh.enkeep.words.global.v1'
+    const WORDS_PROJECT_KEY = 'dsh.enkeep.words.project.v1'
+    const WORDS_MODE_KEY = 'dsh.enkeep.words.mode.v1'
+    const WORDS_MODES = ['all', 'global', 'current']
+    const WORDS_SYNC_URL = '/dsh-enkeep-words/state'
+    const WORDS_SYNC_HEADERS = { 'x-dsh-enkeep-words': '1' }
+    const WORDS_SYNC_POLL_MS = 10000
+    const WORDS_FLOW_SPEED = 60 // px/s for long-word marquee
+
+    function wordsLoadList(key) {
+      try {
+        const raw = localStorage.getItem(key)
+        if (raw === null) return []
+        const parsed = JSON.parse(raw)
+        return Array.isArray(parsed) ? parsed.filter((w) => typeof w === 'string') : []
+      } catch { return [] }
+    }
+    function wordsLoadProjects() {
+      try {
+        const raw = localStorage.getItem(WORDS_PROJECT_KEY)
+        if (raw === null) return {}
+        const parsed = JSON.parse(raw)
+        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+        const out = {}
+        for (const [dir, list] of Object.entries(parsed)) {
+          out[dir] = Array.isArray(list) ? list.filter((w) => typeof w === 'string') : []
+        }
+        return out
+      } catch { return {} }
+    }
+    function wordsSaveList(key, words) {
+      try { localStorage.setItem(key, JSON.stringify(words)) } catch { /* quota/disabled: ignore */ }
+    }
+    function wordsSaveProjects(projects) {
+      try {
+        const out = {}
+        for (const [dir, list] of Object.entries(projects)) {
+          if (Array.isArray(list) && list.length > 0) out[dir] = list
+        }
+        localStorage.setItem(WORDS_PROJECT_KEY, JSON.stringify(out))
+      } catch { /* ignore */ }
+    }
+    function wordsLoadMode() {
+      try {
+        const raw = localStorage.getItem(WORDS_MODE_KEY)
+        return WORDS_MODES.includes(raw) ? raw : 'all'
+      } catch { return 'all' }
+    }
+    function wordsSaveMode(mode) {
+      try { localStorage.setItem(WORDS_MODE_KEY, mode) } catch { /* ignore */ }
+    }
+    function wordsNormalizeProject(cwd) {
+      if (typeof cwd !== 'string' || cwd === '') return null
+      return cwd.replace(/[/\\]+$/, '').replace(/\\/g, '/').toLowerCase()
+    }
+
+    // Single word row: long text truncated, marquee on hover, delete + optional "to global".
+    function WordsRow({ word, showToGlobal, alreadyGlobal, onInsert, onRemove, onAddToGlobal }) {
+      const [hovered, setHovered] = React.useState(false)
+      const [overflow, setOverflow] = React.useState(0)
+      const btnRef = React.useRef(null)
+      const textRef = React.useRef(null)
+      React.useEffect(() => {
+        const btn = btnRef.current, text = textRef.current
+        if (btn === null || text === null) { setOverflow(0); return }
+        setOverflow(hovered ? Math.max(0, text.scrollWidth - btn.clientWidth) : 0)
+      }, [hovered])
+      const flowDuration = overflow > 0 ? overflow / WORDS_FLOW_SPEED : 0
+      const toGlobalIcon = h('svg', { viewBox: '0 0 12 12', width: 12, height: 12, 'aria-hidden': true },
+        h('path', { d: 'M6 1.5v6M3.5 4L6 1.5 8.5 4M2 8.5v2h8v-2', stroke: 'currentColor', strokeWidth: 1.2, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' }))
+      return h('li', { className: 'ekeep-w-row', onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) },
+        h('button', {
+          ref: btnRef, type: 'button', className: 'ekeep-w-word', title: word,
+          onMouseDown: (e) => e.preventDefault(), onClick: () => onInsert(word),
+        }, h('span', {
+          ref: textRef, className: 'ekeep-w-wordText',
+          style: hovered && overflow > 0 ? {
+            transform: 'translateX(-' + overflow + 'px)',
+            transitionDuration: flowDuration.toFixed(2) + 's',
+            transitionTimingFunction: 'linear',
+          } : undefined,
+        }, word)),
+        showToGlobal && !alreadyGlobal ? h('button', {
+          type: 'button', className: 'ekeep-w-toGlobal', title: '添加到全局', 'aria-label': '添加到全局',
+          onMouseDown: (e) => e.preventDefault(), onClick: () => onAddToGlobal(word),
+        }, toGlobalIcon) : null,
+        h('button', {
+          type: 'button', className: 'ekeep-w-del', title: '删除', 'aria-label': '删除',
+          onMouseDown: (e) => e.preventDefault(), onClick: () => onRemove(word),
+        }, '×'))
+    }
+
+    // Trigger icon: inline SVG bookmark/list glyph, same 16x16 / 1.5 stroke spec as HeaderIcon.
+    function WordsTriggerIcon() {
+      return h('svg', {
+        width: 15, height: 15, viewBox: '0 0 16 16', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round',
+        'aria-hidden': true, focusable: false,
+      },
+        h('path', { d: 'M4 2.75h8a1 1 0 0 1 1 1v9.5l-5-3-5 3v-9.5a1 1 0 0 1 1-1z' }))
+    }
+
+    /**
+     * CommonWords — registered into conversation.input.right (session scope).
+     * Standard props: useInput / inputActions / useSessions / sessionId.
+     * Hardcoded Chinese labels to stay consistent with enkeep's other components.
+     */
+    function CommonWords({ useInput, inputActions, useSessions, sessionId }) {
+      const [open, setOpen] = React.useState(false)
+      const [editing, setEditing] = React.useState(false)
+      const [draftWord, setDraftWord] = React.useState('')
+      const [mode, setMode] = React.useState(wordsLoadMode)
+      const [globalWords, setGlobalWords] = React.useState(() => wordsLoadList(WORDS_GLOBAL_KEY))
+      const [projects, setProjects] = React.useState(wordsLoadProjects)
+      const draft = typeof useInput === 'function' ? (useInput((s) => (s === void 0 ? '' : s.draft)) ?? '') : ''
+      const cwd = typeof useSessions === 'function'
+        ? useSessions((s) => (sessionId === void 0 ? void 0 : s.byId[sessionId]?.cwd))
+        : void 0
+      const projectKey = wordsNormalizeProject(cwd)
+      const projectWords = projectKey === null ? [] : (projects[projectKey] ?? [])
+
+      // Persist to localStorage (instant cache + offline fallback).
+      React.useEffect(() => { wordsSaveList(WORDS_GLOBAL_KEY, globalWords) }, [globalWords])
+      React.useEffect(() => { wordsSaveProjects(projects) }, [projects])
+      React.useEffect(() => { wordsSaveMode(mode) }, [mode])
+
+      // Cross-tab sync via storage events.
+      React.useEffect(() => {
+        const onStorage = (event) => {
+          if (event.key === WORDS_GLOBAL_KEY) setGlobalWords(wordsLoadList(WORDS_GLOBAL_KEY))
+          else if (event.key === WORDS_PROJECT_KEY) setProjects(wordsLoadProjects())
+        }
+        window.addEventListener('storage', onStorage)
+        return () => window.removeEventListener('storage', onStorage)
+      }, [])
+
+      // --- server shared storage (three-way merge) ---
+      const syncRevRef = React.useRef(0)
+      const syncHydratedRef = React.useRef(false)
+      const syncSentRef = React.useRef(null)
+      const syncBaseRef = React.useRef(null)
+      const syncStateRef = React.useRef({ mode: 'all', globalWords: [], projects: {} })
+      syncStateRef.current = { mode, globalWords, projects }
+      const fp = (m, w, p) => JSON.stringify([m, w, p])
+      if (syncSentRef.current === null) syncSentRef.current = fp(mode, globalWords, projects)
+      if (syncBaseRef.current === null) syncBaseRef.current = { mode, words: globalWords, projects }
+
+      const mergeWords = (base, theirs, mine) => {
+        const removedByTheirs = new Set(base.filter((w) => !theirs.includes(w)))
+        const removedByMine = new Set(base.filter((w) => !mine.includes(w)))
+        const out = []
+        for (const w of mine) if (!removedByTheirs.has(w) && !out.includes(w)) out.push(w)
+        for (const w of theirs) if (!removedByMine.has(w) && !out.includes(w)) out.push(w)
+        return out
+      }
+
+      const warnedRef = React.useRef(false)
+      const syncPull = React.useCallback(async () => {
+        try {
+          const res = await fetch(WORDS_SYNC_URL, { headers: WORDS_SYNC_HEADERS })
+          if (!res.ok) return
+          const data = await res.json()
+          const state = data === null || typeof data !== 'object' || Array.isArray(data) ? null : data.state
+          if (state === null || typeof state !== 'object' || Array.isArray(state)) return
+          const rev = Number.isFinite(state.rev) ? state.rev : 0
+          if (syncHydratedRef.current && rev <= syncRevRef.current) return
+          const nextMode = WORDS_MODES.includes(state.mode) ? state.mode : 'all'
+          const nextWords = Array.isArray(state.words) ? state.words.filter((w) => typeof w === 'string') : []
+          const nextProjects = state.projects !== null && typeof state.projects === 'object' && !Array.isArray(state.projects) ? state.projects : {}
+          const serverFp = fp(nextMode, nextWords, nextProjects)
+          const cur = syncStateRef.current
+          const dirty = fp(cur.mode, cur.globalWords, cur.projects) !== syncSentRef.current
+          const base = syncBaseRef.current
+          syncRevRef.current = rev
+          syncSentRef.current = serverFp
+          syncBaseRef.current = { mode: nextMode, words: nextWords, projects: nextProjects }
+          syncHydratedRef.current = true
+          if (!dirty) {
+            setMode(nextMode); setGlobalWords(nextWords); setProjects(nextProjects)
+            return
+          }
+          const mergedWords = mergeWords(Array.isArray(base.words) ? base.words : [], nextWords, cur.globalWords)
+          const sProjects = nextProjects !== null && typeof nextProjects === 'object' ? nextProjects : {}
+          const bProjects = base.projects !== null && typeof base.projects === 'object' ? base.projects : {}
+          const lProjects = cur.projects !== null && typeof cur.projects === 'object' ? cur.projects : {}
+          const mergedProjects = {}
+          for (const dir of new Set([...Object.keys(bProjects), ...Object.keys(sProjects), ...Object.keys(lProjects)])) {
+            const items = mergeWords(bProjects[dir] ?? [], sProjects[dir] ?? [], lProjects[dir] ?? [])
+            if (items.length > 0) mergedProjects[dir] = items
+          }
+          setMode(cur.mode); setGlobalWords(mergedWords); setProjects(mergedProjects)
+        } catch (error) {
+          if (!warnedRef.current) {
+            warnedRef.current = true
+            console.warn('[enkeep] 常用词服务端同步不可用，已退回本地存储', error)
+          }
+        }
+      }, [])
+
+      // First load: seed via migrate=1 if server has no file, then pull authoritative state.
+      React.useEffect(() => {
+        let alive = true
+        ;(async () => {
+          try {
+            const res = await fetch(WORDS_SYNC_URL, { headers: WORDS_SYNC_HEADERS })
+            if (!res.ok) return
+            const data = await res.json()
+            if (!alive) return
+            if (data !== null && typeof data === 'object' && data.state === null) {
+              const cur = syncStateRef.current
+              await fetch(WORDS_SYNC_URL + '?migrate=1', {
+                method: 'POST',
+                headers: { ...WORDS_SYNC_HEADERS, 'content-type': 'application/json' },
+                body: JSON.stringify({ mode: cur.mode, words: cur.globalWords, projects: cur.projects }),
+              })
+            }
+            if (alive) await syncPull()
+          } catch { /* no server: stay local */ }
+        })()
+        return () => { alive = false }
+      }, [syncPull])
+
+      // Debounced push (800ms).
+      React.useEffect(() => {
+        if (!syncHydratedRef.current) return
+        const currentFp = fp(mode, globalWords, projects)
+        if (currentFp === syncSentRef.current) return
+        const timer = window.setTimeout(async () => {
+          try {
+            const res = await fetch(WORDS_SYNC_URL, {
+              method: 'POST',
+              headers: { ...WORDS_SYNC_HEADERS, 'content-type': 'application/json' },
+              body: JSON.stringify({ baseRev: syncRevRef.current, mode, words: globalWords, projects }),
+            })
+            if (!res.ok) return
+            const data = await res.json()
+            const state = data === null || typeof data !== 'object' || Array.isArray(data) ? null : data.state
+            if (state === null || typeof state !== 'object' || Array.isArray(state)) return
+            const rev = Number.isFinite(state.rev) ? state.rev : 0
+            syncRevRef.current = rev
+            if (data.conflict !== true) {
+              syncSentRef.current = currentFp
+              syncBaseRef.current = { mode, words: globalWords, projects }
+              return
+            }
+            let base = ['all', [], {}]
+            try { base = JSON.parse(syncSentRef.current || '["all",[],{}]') } catch { /* ignore */ }
+            const serverProjects = state.projects !== null && typeof state.projects === 'object' ? state.projects : {}
+            const mergedWords = mergeWords(Array.isArray(base[1]) ? base[1] : [], Array.isArray(state.words) ? state.words : [], globalWords)
+            const mergedProjects = { ...serverProjects }
+            for (const [dir, list] of Object.entries(projects)) {
+              mergedProjects[dir] = mergeWords((base[2] ?? {})[dir] ?? [], serverProjects[dir] ?? [], list)
+            }
+            const retry = await fetch(WORDS_SYNC_URL, {
+              method: 'POST',
+              headers: { ...WORDS_SYNC_HEADERS, 'content-type': 'application/json' },
+              body: JSON.stringify({ baseRev: rev, mode, words: mergedWords, projects: mergedProjects }),
+            })
+            if (!retry.ok) return
+            const rd = await retry.json()
+            const rs = rd !== null && typeof rd === 'object' ? rd.state : null
+            if (rs !== null && typeof rs === 'object' && Number.isFinite(rs.rev)) syncRevRef.current = rs.rev
+            syncSentRef.current = fp(mode, mergedWords, mergedProjects)
+            syncBaseRef.current = { mode, words: mergedWords, projects: mergedProjects }
+            setGlobalWords(mergedWords); setProjects(mergedProjects)
+          } catch { /* push failed silently; next change/poll will realign */ }
+        }, 800)
+        return () => window.clearTimeout(timer)
+      }, [mode, globalWords, projects, syncPull])
+
+      // Poll every 10s only while panel is open; pause when tab hidden.
+      React.useEffect(() => {
+        if (!open) return
+        syncPull()
+        const id = window.setInterval(() => { if (!document.hidden) syncPull() }, WORDS_SYNC_POLL_MS)
+        const onVisible = () => { if (!document.hidden) syncPull() }
+        document.addEventListener('visibilitychange', onVisible)
+        return () => {
+          window.clearInterval(id)
+          document.removeEventListener('visibilitychange', onVisible)
+        }
+      }, [open, syncPull])
+
+      // panel positioning (wb-03): read composer card rect → write ONLY panel's own style.
+      const rootRef = React.useRef(null)
+      const panelRef = React.useRef(null)
+      React.useEffect(() => {
+        if (!open || !panelRef.current) return
+        const p = panelRef.current, r = rootRef.current
+        if (!r) return
+        const c = r.closest('[data-composer-card]') || r.closest('[data-composer-seat]') ||
+          r.closest('[class*="composer"]') || r.parentElement?.parentElement?.parentElement || r.parentElement
+        if (!c) return
+        const u = () => {
+          const q = c.getBoundingClientRect()
+          p.style.left = q.left + 'px'
+          p.style.width = q.width + 'px'
+          p.style.bottom = (window.innerHeight - q.top + 8) + 'px'
+        }
+        u()
+        window.addEventListener('resize', u)
+        return () => window.removeEventListener('resize', u)
+      }, [open])
+
+      // close on Esc / outside click.
+      React.useEffect(() => {
+        if (!open) return
+        const onKey = (e) => {
+          if (e.key === 'Escape') { setOpen(false); setEditing(false) }
+        }
+        const onPointer = (e) => {
+          if (rootRef.current !== null && e.target instanceof Node && !rootRef.current.contains(e.target)) {
+            setOpen(false); setEditing(false)
+          }
+        }
+        window.addEventListener('keydown', onKey)
+        document.addEventListener('mousedown', onPointer)
+        return () => {
+          window.removeEventListener('keydown', onKey)
+          document.removeEventListener('mousedown', onPointer)
+        }
+      }, [open])
+
+      const visible = React.useMemo(() => {
+        if (mode === 'global') return globalWords
+        if (mode === 'current') return projectWords
+        const seen = new Set(globalWords)
+        return [...globalWords, ...projectWords.filter((w) => !seen.has(w))]
+      }, [mode, globalWords, projectWords])
+
+      const insert = (word) => {
+        const base = draft || ''
+        const sep = base !== '' && !/\s$/.test(base) ? ' ' : ''
+        if (typeof inputActions?.setDraft === 'function') inputActions.setDraft(base + sep + word)
+      }
+      const addWord = () => {
+        const word = draftWord.trim()
+        if (word === '') return
+        if (mode === 'global') {
+          setGlobalWords((prev) => prev.includes(word) ? prev : [...prev, word])
+        } else {
+          if (projectKey === null) return
+          setProjects((prev) => {
+            const cur = prev[projectKey] ?? []
+            return cur.includes(word) ? prev : { ...prev, [projectKey]: [...cur, word] }
+          })
+        }
+        setDraftWord(''); setEditing(false)
+      }
+      const removeWord = (word) => {
+        setGlobalWords((prev) => prev.filter((w) => w !== word))
+        if (projectKey !== null) {
+          setProjects((prev) => {
+            const cur = prev[projectKey] ?? []
+            return cur.includes(word) ? { ...prev, [projectKey]: cur.filter((w) => w !== word) } : prev
+          })
+        }
+      }
+      const addToGlobal = (word) => {
+        setGlobalWords((prev) => prev.includes(word) ? prev : [...prev, word])
+      }
+
+      const emptyText = mode === 'global' ? '还没有常用词，点击下方按钮添加'
+        : mode === 'current' ? (projectKey === null ? '当前没有项目' : '当前项目还没有常用词')
+        : '还没有任何常用词，点击下方按钮添加'
+
+      const chevron = h('span', {
+        className: 'ekeep-w-chevron' + (open ? ' ekeep-w-chevronOpen' : ''),
+      }, h('svg', { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, 'aria-hidden': true },
+        h('path', { d: 'M2 6l3-3 3 3' })))
+
+      return h('div', { className: 'ekeep-w-root', ref: rootRef },
+        h('button', {
+          type: 'button', className: 'ekeep-w-trigger', title: '常用词', 'aria-label': '常用词',
+          'aria-haspopup': 'listbox', 'aria-expanded': open,
+          onMouseDown: (e) => e.preventDefault(),
+          onClick: () => { if (open) setEditing(false); setOpen((v) => !v) },
+        }, h(WordsTriggerIcon), chevron),
+        open ? h('div', { ref: panelRef, className: 'ekeep-w-panel', role: 'listbox', 'aria-label': '常用词' },
+          editing ? h('div', { className: 'ekeep-w-addRow' },
+            h('input', {
+              className: 'ekeep-w-addInput', autoFocus: true, value: draftWord,
+              placeholder: '输入词或句子…',
+              onChange: (e) => setDraftWord(e.target.value),
+              onKeyDown: (e) => {
+                if (e.key === 'Enter') addWord()
+                else if (e.key === 'Escape') { setEditing(false); setDraftWord('') }
+              },
+            }),
+            h('button', { type: 'button', className: 'ekeep-w-addConfirm', disabled: draftWord.trim() === '', onClick: addWord }, '确定'),
+            h('button', {
+              type: 'button', className: 'ekeep-w-addConfirm',
+              onClick: () => { setEditing(false); setDraftWord('') },
+            }, '取消')
+          ) : visible.length === 0 ? h('div', { className: 'ekeep-w-empty' }, emptyText)
+            : h('ul', { className: 'ekeep-w-list' }, visible.map((word) => h(WordsRow, {
+              key: word, word,
+              showToGlobal: mode === 'current',
+              alreadyGlobal: globalWords.includes(word),
+              onInsert: insert, onRemove: removeWord, onAddToGlobal: addToGlobal,
+            }))),
+          h('div', { className: 'ekeep-w-actions' },
+            !editing ? h('button', {
+              type: 'button', className: 'ekeep-w-add',
+              onMouseDown: (e) => e.preventDefault(), onClick: () => setEditing(true),
+            }, '＋ 添加') : null,
+            h('div', { className: 'ekeep-w-modes', role: 'group', 'aria-label': '显示范围' },
+              [['all', '全部'], ['global', '全局'], ['current', '当前']].map(([value, label]) => h('button', {
+                key: value, type: 'button',
+                className: 'ekeep-w-mode' + (mode === value ? ' ekeep-w-modeActive' : ''),
+                'aria-pressed': mode === value, title: label,
+                onMouseDown: (e) => e.preventDefault(), onClick: () => setMode(value),
+              }, label)))
+          )
+        ) : null)
+    }
+
     // --- Center-column panel: width toggle + short usage note ----------------
     function EnkeepPanel({ form }) {
       const [, force] = React.useState(0)
@@ -420,6 +896,7 @@ window.__ModuleLoader__.load({
       React.useEffect(() => form.subscribe(() => force((n) => n + 1)), [form])
       const value = form.getSnapshot().value || {}
       const show = value.showLauncher !== false
+      const showWords = value.showCommonWords !== false
       const wide = value.chatWidth === 'wide'
       const hoursRaw = Number(value.activityWindowHours)
       const hours = Number.isFinite(hoursRaw) && hoursRaw >= 1 ? hoursRaw : 24
@@ -433,6 +910,9 @@ window.__ModuleLoader__.load({
         h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
           h('input', { type: 'checkbox', checked: show, onChange: (e) => set('showLauncher', e.target.checked) }),
           h('span', null, '显示侧栏按钮')),
+        h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+          h('input', { type: 'checkbox', checked: showWords, onChange: (e) => set('showCommonWords', e.target.checked) }),
+          h('span', null, '显示常用词按钮（输入框右侧）')),
         h('label', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
           h('input', { type: 'checkbox', checked: wide, onChange: (e) => set('chatWidth', e.target.checked ? 'wide' : 'narrow') }),
           h('span', null, '宽屏聊天区（去掉 920px 上限）')),
@@ -613,6 +1093,36 @@ window.__ModuleLoader__.load({
           })))
           return () => { stopChip(); stopStyle() }
         }, 'enkeep: current session chip')
+
+        // (6) Common words: trigger + panel on the composer's trailing side.
+        // conversation.input.right is a session-scope list slot; useInput /
+        // inputActions / useSessions / sessionId are standard injected props.
+        ctx.effect(() => {
+          const stopStyle = installWordsStyle()
+          let stopWords = null
+          const sync = () => {
+            const want = (form.getSnapshot().value || {}).showCommonWords !== false
+            if (want && stopWords === null) {
+              stopWords = ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
+                name: 'conversation.input.right',
+                id: 'enkeep-common-words',
+                order: 30,
+              }, (props) => h(CommonWords, {
+                useInput: props.useInput,
+                inputActions: props.inputActions,
+                useSessions: props.useSessions,
+                sessionId: props.sessionId,
+              })))
+            } else if (!want && stopWords !== null) {
+              const stop = stopWords
+              stopWords = null
+              stop()
+            }
+          }
+          const stopSub = form.subscribe(sync)
+          sync()
+          return () => { stopSub(); stopWords?.(); stopStyle() }
+        }, 'enkeep: common words')
       },
     }
   },
