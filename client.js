@@ -170,7 +170,7 @@ window.__ModuleLoader__.load({
       'box-shadow:0 12px 40px rgba(0,0,0,.5);font-size:13px;}',
       '[data-enkeep-modal] strong{font-size:14px;}',
       '[data-enkeep-modal] p{margin:0;line-height:1.6;opacity:.85;}',
-      '[data-enkeep-modal-error]{color:var(--dsw-alias-state-danger-label, #d9534f);opacity:1;}',
+      '[data-enkeep-modal-error]{color:var(--dsw-alias-state-error-primary, #d54941);opacity:1;}',
       '[data-enkeep-rename-input]{width:100%;box-sizing:border-box;padding:7px 9px;',
       'border:1px solid var(--dsw-alias-border-l3);border-radius:6px;',
       'background:var(--dsw-alias-bg-layer-1, #1a1b1c);color:inherit;font-size:13px;}',
@@ -1734,21 +1734,24 @@ window.__ModuleLoader__.load({
             if (uiWorkspace && typeof uiWorkspace.unpinSession === 'function') return uiWorkspace.unpinSession(id)
             console.warn('[enkeep] uiWorkspace.unpinSession unavailable'); return undefined
           }
-          // options (e.g. { stopActivity: true }) are forwarded so a running
-          // session can be stopped+archived from the second-confirm dialog.
+          // options (e.g. { stopActivity: true }) are forwarded as-is; the official
+          // archiveSession(sessionId, options = {}) applies its own default for
+          // undefined. Throw on a missing service so the caller's catch shows a
+          // visible failure instead of treating `undefined` as success (which
+          // would clear our local pinned set without actually archiving).
           const archiveSession = (id, options) => {
             const uiWorkspace = get('uiWorkspace')
             if (uiWorkspace && typeof uiWorkspace.archiveSession === 'function') {
-              return options === undefined ? uiWorkspace.archiveSession(id) : uiWorkspace.archiveSession(id, options)
+              return uiWorkspace.archiveSession(id, options)
             }
-            console.warn('[enkeep] uiWorkspace.archiveSession unavailable'); return undefined
+            throw new Error('uiWorkspace.archiveSession 服务不可用')
           }
           // Rename uses the public low-level sessions.using(...).rename path —
           // the official rename dialog trigger is an internal slot, not exposed.
           const renameSession = async (id, title) => {
             const sessionsSvc = get('sessions')
             if (!sessionsSvc || typeof sessionsSvc.using !== 'function') {
-              console.warn('[enkeep] sessions service unavailable; cannot rename'); return
+              throw new Error('sessions 服务不可用')
             }
             const result = await sessionsSvc.using(id, { source: 'workspaceOperation' }, (ref) => ref.binding.session.rename(title))
             if (result && result.ok === false) throw new Error(result.error && result.error.message ? result.error.message : 'rename rejected')
