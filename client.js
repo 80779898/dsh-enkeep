@@ -91,7 +91,11 @@ window.__ModuleLoader__.load({
       '[data-sidebar-collapsed] [data-enkeep-activity-bar]{',
       'right:calc(56px + var(--dsh-sidebar-inline-padding, 12px) + 8px);}',
       '[data-enkeep-activity-head]{display:flex;align-items:center;gap:6px;',
-      'font-size:12px;opacity:.75;padding:0 2px 2px;}',
+      'font-size:12px;opacity:.75;padding:0 2px 2px;cursor:move;user-select:none;}',
+      // Dragging state: stronger shadow + grabbing cursor; transform is set inline
+      // on the bar by the component (叠加在默认 CSS 定位之上).
+      '[data-enkeep-activity-bar][data-dragging]{cursor:grabbing;',
+      'box-shadow:0 10px 32px rgba(0,0,0,.42);transition:none;}',
       '[data-enkeep-activity-head] strong{font-weight:600;}',
       '[data-enkeep-activity-actions]{display:flex;align-items:center;gap:2px;margin-left:auto;}',
       // 所有头部按钮共用一个尺寸盒：22×22、15px SVG、无边框，保证视觉大小一致。
@@ -250,7 +254,7 @@ window.__ModuleLoader__.load({
       '.ekeep-p-dup{font-size:12px;color:var(--dsw-alias-state-warn-label,#d89614);}',
       '.ekeep-p-empty{font-size:12px;color:var(--dsw-alias-label-tertiary);padding:8px 0;}',
       // Settings panel shell: side tab bar + full-width pane + close button.
-      '.ekeep-set-root{display:flex;flex-direction:column;width:100%;height:100%;min-height:0;box-sizing:border-box;}',
+      '.ekeep-set-root{display:flex;flex-direction:column;width:100%;height:100%;min-height:0;box-sizing:border-box;padding:0 16px 16px;}',
       '.ekeep-set-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0 12px;}',
       '.ekeep-set-title{font-size:16px;font-weight:600;color:var(--dsw-alias-label-primary);}',
       '.ekeep-set-close{flex:none;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:16px;line-height:1;cursor:pointer;}',
@@ -389,12 +393,31 @@ window.__ModuleLoader__.load({
     // --- Activity bar: always-on floating strip of active sessions -----------
     // Standard hook props (useSessions/useSessionStatus/useWorkspaces) are injected
     // by the renderer into every shell.overlay slot component — no service inject.
+    // Draggable position is stored enkeep-owned. {x,y} is a pixel offset applied
+    // on top of the default CSS position via transform, so default placement stays
+    // identical until the user drags; double-click the header resets to {0,0}.
+    const ACTIVITY_POS_KEY = 'dsh.enkeep.activity.pos.v1'
+    function readActivityPos() {
+      try {
+        const raw = localStorage.getItem(ACTIVITY_POS_KEY)
+        const v = raw ? JSON.parse(raw) : null
+        if (v && Number.isFinite(v.x) && Number.isFinite(v.y)) return { x: v.x, y: v.y }
+      } catch (e) { /* ignore */ }
+      return { x: 0, y: 0 }
+    }
+    function writeActivityPos(p) {
+      try { localStorage.setItem(ACTIVITY_POS_KEY, JSON.stringify(p)) } catch (e) { /* ignore */ }
+    }
+
     function ActivityBar({ form, openSession, newSession, addWorkspace, openSettings, useSessions, useSessionStatus, useWorkspaces }) {
       const [collapsed, setCollapsed] = React.useState(false)
       const [, setTick] = React.useState(0)
       const [hours, setHours] = React.useState(24)
       const [busy, setBusy] = React.useState(false)
       const busyRef = React.useRef(false)
+      const [pos, setPos] = React.useState(readActivityPos)
+      const [dragging, setDragging] = React.useState(false)
+      const dragRef = React.useRef(null)
 
       // Run a header action with a shared busy guard (ref: immune to rapid double-clicks).
       const runAction = (fn) => async () => {
@@ -423,6 +446,46 @@ window.__ModuleLoader__.load({
         return () => { clearInterval(timer); window.removeEventListener('focus', onFocus) }
       }, [])
 
+      // Drag the bar by its header. Pointer listeners live on window for the
+      // duration of a drag so the cursor can leave the element; cleaned up on
+      // pointerup and on unmount (HMR safe).
+      React.useEffect(() => {
+        const onMove = (e) => {
+          const d = dragRef.current
+          if (!d) return
+          const next = { x: d.px + (e.clientX - d.cx), y: d.py + (e.clientY - d.cy) }
+          setPos(next)
+          writeActivityPos(next)
+        }
+        const onUp = () => {
+          if (!dragRef.current) return
+          dragRef.current = null
+          setDragging(false)
+        }
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
+        window.addEventListener('pointercancel', onUp)
+        return () => {
+          window.removeEventListener('pointermove', onMove)
+          window.removeEventListener('pointerup', onUp)
+          window.removeEventListener('pointercancel', onUp)
+        }
+      }, [])
+      const onDragStart = (e) => {
+        if (e.button !== 0) return
+        // Let header buttons (new / workspace / settings / collapse) work normally.
+        if (e.target && typeof e.target.closest === 'function' && e.target.closest('button')) return
+        dragRef.current = { cx: e.clientX, cy: e.clientY, px: pos.x, py: pos.y }
+        setDragging(true)
+        if (typeof e.preventDefault === 'function') e.preventDefault()
+      }
+      const resetPos = (e) => {
+        if (e && e.target && typeof e.target.closest === 'function' && e.target.closest('button')) return
+        const zero = { x: 0, y: 0 }
+        setPos(zero)
+        writeActivityPos(zero)
+      }
+
       const sessions = useSessions ? useSessions((s) => s) : undefined
       const statuses = useSessionStatus ? useSessionStatus((s) => s) : undefined
       const ws = useWorkspaces ? useWorkspaces((s) => s) : undefined
@@ -431,8 +494,17 @@ window.__ModuleLoader__.load({
 
       if (items.length === 0) return null
 
-      return h('div', { 'data-enkeep-activity-bar': true },
-        h('div', { 'data-enkeep-activity-head': true },
+      return h('div', {
+        'data-enkeep-activity-bar': true,
+        'data-dragging': dragging ? true : undefined,
+        title: '拖动标题栏可移动位置，双击标题栏复位',
+        style: { transform: `translate(${pos.x}px, ${pos.y}px)` },
+      },
+        h('div', {
+          'data-enkeep-activity-head': true,
+          onPointerDown: onDragStart,
+          onDoubleClick: resetPos,
+        },
           h('strong', null, '活动区'),
           h('span', null, `${items.length} 个`),
           h('div', { 'data-enkeep-activity-actions': true },
