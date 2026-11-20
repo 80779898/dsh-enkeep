@@ -217,16 +217,16 @@ window.__ModuleLoader__.load({
       '[data-enkeep-composer-current]{',
       'display:flex;justify-content:flex-start;align-items:center;gap:6px;',
       'flex:1 1 auto;width:auto;min-width:0;max-width:none;margin:0;}',
-      // Current-session chip: keep native (white) text for readability, and use a
-      // soft amber border + a very faint amber wash to read as "current" at a glance
-      // — noticeable but not jumpy. warn-primary maps to dsw amber (#f59e0b) and
-      // color-mix keeps it coherent in both themes; no new tokens or deps.
+      // Current-session chip: a solid amber border + a stronger amber wash so it
+      // clearly reads as "current" in orange, while native (white) text stays fully
+      // readable. warn-primary maps to dsw amber (#f59e0b); color-mix for the wash
+      // keeps both themes coherent. No new tokens or deps.
       '[data-enkeep-current-chip]{',
       'display:inline-flex;align-items:center;max-width:100%;flex:none;',
       'padding:3px 10px;font-size:12px;line-height:18px;',
-      'border-radius:999px;',
-      'border:1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #f59e0b) 50%, transparent);',
-      'background:color-mix(in srgb, var(--dsw-alias-state-warn-primary, #f59e0b) 8%, var(--dsw-alias-bg-layer-2, #202124));',
+      'border-radius:var(--dsw-radius-sm,8px);',
+      'border:1px solid var(--dsw-alias-state-warn-primary, #f59e0b);',
+      'background:color-mix(in srgb, var(--dsw-alias-state-warn-primary, #f59e0b) 18%, var(--dsw-alias-bg-layer-2, #202124));',
       'color:var(--dsw-alias-text-1);}',
       '[data-enkeep-current-label]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       // High-frequency quick-access row: single line, horizontal scroll, never wraps
@@ -237,7 +237,7 @@ window.__ModuleLoader__.load({
       '[data-enkeep-quick]::-webkit-scrollbar-thumb{background:var(--dsw-alias-border-l3);border-radius:4px;}',
       '[data-enkeep-quick-item]{flex:0 0 auto;max-width:170px;overflow:hidden;text-overflow:ellipsis;',
       'white-space:nowrap;padding:3px 9px;font-size:12px;line-height:18px;',
-      'border:1px solid var(--dsw-alias-border-l3);border-radius:999px;',
+      'border:1px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-sm,8px);',
       'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-text-2);cursor:pointer;}',
       '[data-enkeep-quick-item]:hover{border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-text-1);}',
       '[data-enkeep-quick-item]:focus-visible{outline:2px solid var(--dsw-alias-border-l3);outline-offset:-2px;}',
