@@ -217,10 +217,11 @@ window.__ModuleLoader__.load({
       return () => style.remove()
     }
 
-    // --- Composer current-session chip ---------------------------------------
-    // Current-session label + quick prompts, rendered on composer.composer.dock
-    // (the composer's bottom row, below the textarea). Our content sits on the
-    // LEFT of that single row; the native stats pills + ContextMeter stay RIGHT.
+    // --- Composer quick-prompt dock ------------------------------------------
+    // Quick prompts, rendered on composer.composer.dock (the composer's bottom
+    // row, below the textarea). Our content sits on the LEFT of that single row;
+    // the native stats pills + ContextMeter stay RIGHT. The current-session
+    // chip was removed (the label now lives in the conversation header only).
     const CURRENT_STYLE_ID = 'enkeep-current'
     const CURRENT_CSS = [
       // Stretch the shared dock to the composer card width so our left content
@@ -231,18 +232,6 @@ window.__ModuleLoader__.load({
       '[data-enkeep-composer-current]{',
       'display:flex;justify-content:flex-start;align-items:center;gap:6px;',
       'flex:1 1 auto;width:auto;min-width:0;max-width:none;margin:0;}',
-      // Current-session chip: a solid amber border + a stronger amber wash so it
-      // clearly reads as "current" in orange, while native (white) text stays fully
-      // readable. warn-primary maps to dsw amber (#f59e0b); color-mix for the wash
-      // keeps both themes coherent. No new tokens or deps.
-      '[data-enkeep-current-chip]{',
-      'display:inline-flex;align-items:center;max-width:100%;flex:none;',
-      'padding:3px 10px;font-size:12px;line-height:18px;',
-      'border-radius:var(--dsw-radius-sm,8px);',
-      'border:1px solid var(--dsw-alias-state-warn-primary, #f59e0b);',
-      'background:color-mix(in srgb, var(--dsw-alias-state-warn-primary, #f59e0b) 18%, var(--dsw-alias-bg-layer-2, #202124));',
-      'color:var(--dsw-alias-text-1);}',
-      '[data-enkeep-current-label]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       // High-frequency quick-access row: single line, horizontal scroll, never wraps
       // and never writes chat-width variables (width isolation).
       '[data-enkeep-quick]{display:flex;align-items:center;gap:4px;',
@@ -272,6 +261,52 @@ window.__ModuleLoader__.load({
       style.dataset.plugin = 'dsh-enkeep'
       style.dataset.pluginCss = CURRENT_STYLE_ID
       style.textContent = CURRENT_CSS
+      document.head.appendChild(style)
+      return () => style.remove()
+    }
+
+    // --- Header title CSS -----------------------------------------------------
+    // Current-session "dir: title" in the conversation crumbs row, plus the
+    // native-name hiding hook. All selectors are scoped to our own data hooks
+    // and the official slot anchor; no hash classes, no bare global selectors,
+    // no width-isolation variables.
+    const HEADER_STYLE_ID = 'enkeep-header'
+    const HEADER_CSS = [
+      // Orange, slightly heavier than the native tertiary crumb label.
+      '[data-enkeep-header-title]{',
+      'color:var(--dsw-alias-state-warn-primary,#f59e0b);font-weight:600;',
+      'max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+      'padding:4px 8px;border-radius:var(--dsw-radius-md,6px);',
+      'font-size:14px;line-height:20px;}',
+      // Hide the native name ONLY in the "last, non-subagent" structure, where
+      // it is the span immediately before the slot anchor. The hide marker is
+      // emitted by HeaderTitle only there; subagent crumbs have no preceding
+      // native name (their title is the unused slot fallback), so this rule
+      // cannot swallow their "/" separator.
+      'span:has(+ [data-slot="conversation.session.header.lineage"]:has([data-enkeep-header-hide-native])){',
+      'display:none;}',
+      // Ancestor crumbs: mirror the native .crumb box using tokens (no hash).
+      '[data-enkeep-header-ancestor]{',
+      'max-width:220px;color:var(--dsw-alias-label-tertiary);',
+      'text-overflow:ellipsis;white-space:nowrap;overflow:hidden;',
+      'background:transparent;border:none;padding:4px 8px;',
+      'border-radius:var(--dsw-radius-md,6px);font-size:14px;line-height:20px;',
+      'font-family:inherit;}',
+      '[data-enkeep-header-ancestor][data-enkeep-header-subagent]{',
+      'font-size:12px;line-height:18px;}',
+      'button[data-enkeep-header-ancestor]{cursor:pointer;}',
+      'button[data-enkeep-header-ancestor]:hover{',
+      'background:var(--dsw-alias-interactive-bg-hover);}',
+    ].join('\n')
+
+    function installHeaderStyle() {
+      if (typeof document === 'undefined') return () => {}
+      const existing = document.querySelector(`style[data-plugin-css="${HEADER_STYLE_ID}"]`)
+      if (existing) return () => {}
+      const style = document.createElement('style')
+      style.dataset.plugin = 'dsh-enkeep'
+      style.dataset.pluginCss = HEADER_STYLE_ID
+      style.textContent = HEADER_CSS
       document.head.appendChild(style)
       return () => style.remove()
     }
@@ -668,6 +703,39 @@ window.__ModuleLoader__.load({
       return null
     }
 
+    // Conversation header lineage slot. The official slot is single/session-scope:
+    // registering an entry replaces the fallback for EVERY crumb that renders it,
+    // so we render both the current crumb and subagent ancestors ourselves.
+    // Owner props: lineageSessionId, displayTitle, openTitle (ancestors only).
+    // Standard session-scope props: useSessions, sessionId.
+    function HeaderTitle({ lineageSessionId, displayTitle, openTitle, useSessions, sessionId }) {
+      const row = typeof useSessions === 'function'
+        ? useSessions((s) => (lineageSessionId === void 0 ? void 0 : (s && s.byId) ? s.byId[lineageSessionId] : undefined))
+        : void 0
+      const isSubagent = !!(row && row.origin === 'subagent')
+      // openTitle is absent only on the last crumb; double-check with sessionId.
+      const isCurrent = openTitle === void 0 && lineageSessionId === sessionId
+      if (isCurrent) {
+        const label = sessionLabel(row, lineageSessionId)
+        const attrs = { 'data-enkeep-header-title': true, title: label }
+        // Only the last NON-subagent crumb has a preceding native name span.
+        // Tagging a subagent crumb would make the CSS hide its "/" separator.
+        if (!isSubagent) attrs['data-enkeep-header-hide-native'] = true
+        return h('span', attrs, label)
+      }
+      // Ancestor (in practice only subagent ancestors reach this slot): keep the
+      // native look + click behaviour without relying on the owner's hash class.
+      const text = displayTitle || (row && row.displayTitle) || lineageSessionId || ''
+      const attrs = { 'data-enkeep-header-ancestor': true, title: text }
+      if (isSubagent) attrs['data-enkeep-header-subagent'] = true
+      if (typeof openTitle === 'function') {
+        attrs.type = 'button'
+        attrs.onClick = openTitle
+        return h('button', attrs, text)
+      }
+      return h('span', attrs, text)
+    }
+
     // Above-composer dock: current-session plain label (left) + high-frequency
     // prompt buttons (right, same row). `useSessions`/`sessionId`/`useInput`/
     // `inputActions` are standard props auto-injected into session-scope slots.
@@ -675,16 +743,13 @@ window.__ModuleLoader__.load({
     function ComposerDock({ form, useSessions, sessionId, useInput, inputActions }) {
       const [, force] = React.useState(0)
       React.useEffect(() => form.subscribe(() => force((n) => n + 1)), [form])
-      const row = typeof useSessions === 'function'
-        ? useSessions((s) => (sessionId === void 0 ? void 0 : (s && s.byId) ? s.byId[sessionId] : undefined))
-        : void 0
-      const label = row ? sessionLabel(row, sessionId) : ''
-      const chip = label ? h('div', { 'data-enkeep-current-chip': true, title: label },
-        h('span', { 'data-enkeep-current-label': true }, label)) : null
+      // The current-session label now lives in the conversation header only;
+      // this dock keeps just the quick-prompt row. useSessions/sessionId are
+      // still forwarded to QuickPrompts.
       const showWords = (form.getSnapshot().value || {}).showCommonWords !== false
       const quick = showWords ? h(QuickPrompts, { form, useInput, inputActions, useSessions, sessionId }) : null
-      if (!chip && !quick) return null
-      return h('div', { 'data-enkeep-composer-current': true }, chip, quick)
+      if (!quick) return null
+      return h('div', { 'data-enkeep-composer-current': true }, quick)
     }
 
     // --- Activity bar: always-on floating strip of active sessions -----------
@@ -2216,6 +2281,28 @@ window.__ModuleLoader__.load({
           })))
           return () => { stopOverlay(); stopStyle() }
         }, 'enkeep: activity bar')
+
+        // (3b) Conversation header title: take over the (currently empty) official
+        // single/session-scope lineage slot so the current crumb shows our orange
+        // "dir: title" with the working directory. Standard props (useSessions /
+        // sessionId) are injected by the renderer; owner props (lineageSessionId /
+        // displayTitle / openTitle) come from the host crumb. Style is installed
+        // idempotently and disposed with the registration.
+        ctx.effect(() => {
+          const stopStyle = installHeaderStyle()
+          const stopHeader = ctx.slots.inject('conversation.session.header.lineage', () => ctx.slots.register({
+            name: 'conversation.session.header.lineage',
+            id: 'enkeep-header-title',
+            inject: () => ({}),
+          }, (props) => h(HeaderTitle, {
+            lineageSessionId: props.lineageSessionId,
+            displayTitle: props.displayTitle,
+            openTitle: props.openTitle,
+            useSessions: props.useSessions,
+            sessionId: props.sessionId,
+          })))
+          return () => { stopHeader(); stopStyle() }
+        }, 'enkeep: header title')
 
         // (4) Settings page entry with toggles + activity window input.
         ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
