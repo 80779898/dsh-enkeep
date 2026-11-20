@@ -217,11 +217,17 @@ window.__ModuleLoader__.load({
       '[data-enkeep-composer-current]{',
       'display:flex;justify-content:flex-start;align-items:center;gap:6px;',
       'flex:1 1 auto;width:auto;min-width:0;max-width:none;margin:0;}',
+      // Current-session chip: a soft accent tint (10% accent over the base layer),
+      // a faint accent border (32%) and a slightly deeper accent text — enough to
+      // read as "current" at a glance without a loud, jumpy block. color-mix keeps
+      // it coherent in both light and dark themes; no new tokens or deps.
       '[data-enkeep-current-chip]{',
       'display:inline-flex;align-items:center;max-width:100%;flex:none;',
       'padding:3px 10px;font-size:12px;line-height:18px;',
-      'border:1px solid var(--dsw-alias-border-l3);border-radius:999px;',
-      'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-text-1);}',
+      'border-radius:999px;',
+      'border:1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 32%, transparent);',
+      'background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 10%, var(--dsw-alias-bg-layer-2, #202124));',
+      'color:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 78%, var(--dsw-alias-text-1, #e8eaed));}',
       '[data-enkeep-current-label]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       // High-frequency quick-access row: single line, horizontal scroll, never wraps
       // and never writes chat-width variables (width isolation).
