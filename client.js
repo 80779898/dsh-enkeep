@@ -356,6 +356,169 @@ window.__ModuleLoader__.load({
       return () => style.remove()
     }
 
+    // --- git-panel split handle (optional cross-plugin enhancement) ----------
+    // Zero-dependency enhancement of the third-party dsh-git-panel if it happens
+    // to be mounted. Every selector is scoped under `.dsh-gp` (the git-panel root),
+    // so with git-panel absent these rules match nothing and are inert. The height
+    // variable is written ONLY on the `.dsh-gp` element — never on :root/body — so
+    // no other plugin is affected. See docs/GIT-PANEL-SPLIT-PLAN.md.
+    const GITPANEL_STYLE_ID = 'enkeep-gitpanel-split'
+    const GITPANEL_SPLIT_KEY = 'dsh.enkeep.gp.topH.v1'
+    const GITPANEL_SPLIT_CLASS = 'enkeep-gp-split'
+    const GITPANEL_TOP_H_VAR = '--enkeep-gp-top-h'
+    const GITPANEL_MIN_PX = 120 // keep both the changes list and the body at least this tall
+    const GITPANEL_CSS = [
+      '.dsh-gp .dsh-gp-write{position:relative;}',
+      // The draggable grip sits on the write/body divider (write's bottom border).
+      '.dsh-gp .dsh-gp-write::after{content:"";position:absolute;left:50%;bottom:-3px;',
+      'transform:translateX(-50%);width:36px;height:6px;border-radius:3px;',
+      'background:var(--border);cursor:row-resize;touch-action:none;z-index:6;opacity:.6;}',
+      '.dsh-gp .dsh-gp-write::after:hover,.dsh-gp.enkeep-gp-dragging .dsh-gp-write::after{',
+      'background:var(--accent);opacity:1;}',
+      // Only when a split height is committed does the layout switch to a fixed
+      // top band; default (no var) keeps git-panel's exact native layout.
+      `.dsh-gp.${GITPANEL_SPLIT_CLASS} .dsh-gp-write{`,
+      `height:var(${GITPANEL_TOP_H_VAR},auto);flex:none;min-height:0;overflow:hidden;}`,
+      `.dsh-gp.${GITPANEL_SPLIT_CLASS} .dsh-gp-changes{`,
+      'flex:1 1 auto;min-height:0;overflow-y:auto;}',
+      `.dsh-gp.${GITPANEL_SPLIT_CLASS} .dsh-gp-body{flex:1 1 auto;min-height:0;overflow:auto;}`,
+    ].join('\n')
+
+    function installGitPanelStyle() {
+      if (typeof document === 'undefined') return () => {}
+      const existing = document.querySelector(`style[data-plugin-css="${GITPANEL_STYLE_ID}"]`)
+      if (existing) return () => {}
+      const style = document.createElement('style')
+      style.dataset.plugin = 'dsh-enkeep'
+      style.dataset.pluginCss = GITPANEL_STYLE_ID
+      style.textContent = GITPANEL_CSS
+      document.head.appendChild(style)
+      return () => style.remove()
+    }
+
+    // Find the mounted git-panel root, wire up a row-resize drag on the divider,
+    // and restore a saved height. Returns a disposer that removes every listener
+    // it added. Absent panel / missing DOM APIs -> no-op, no throw.
+    function setupGitPanelSplit() {
+      if (typeof document === 'undefined' || typeof MutationObserver !== 'function') return () => {}
+      let gp = null
+      let detachPanel = null
+      let disposeObserver = null
+
+      const readSaved = () => {
+        try {
+          const raw = localStorage.getItem(GITPANEL_SPLIT_KEY)
+          const n = raw === null ? NaN : Number(raw)
+          return Number.isFinite(n) && n >= GITPANEL_MIN_PX ? n : null
+        } catch (e) { return null }
+      }
+      const clamp = (px, max) => Math.min(Math.max(px, GITPANEL_MIN_PX), Math.max(GITPANEL_MIN_PX, max))
+      const applyHeight = (root, px) => {
+        try {
+          root.classList.add(GITPANEL_SPLIT_CLASS)
+          root.style.setProperty(GITPANEL_TOP_H_VAR, Math.round(px) + 'px')
+        } catch (e) { /* ignore */ }
+      }
+      const resetHeight = (root) => {
+        try {
+          root.classList.remove(GITPANEL_SPLIT_CLASS)
+          root.style.removeProperty(GITPANEL_TOP_H_VAR)
+          localStorage.removeItem(GITPANEL_SPLIT_KEY)
+        } catch (e) { /* ignore */ }
+      }
+      const maxTopFor = (root) => {
+        // available height = current top + bottom bands; leave MIN at the bottom
+        const write = root.querySelector('.dsh-gp-write')
+        const body = root.querySelector('.dsh-gp-body')
+        const top = write ? write.getBoundingClientRect().height : 0
+        const bottom = body ? body.getBoundingClientRect().height : 0
+        return clamp(top + bottom - GITPANEL_MIN_PX, GITPANEL_MIN_PX)
+      }
+
+      const bindPanel = (root) => {
+        const onDown = (e) => {
+          try {
+            if (e.button !== 0) return
+            const write = root.querySelector('.dsh-gp-write')
+            if (!write) return
+            const rect = write.getBoundingClientRect()
+            // grip is at the bottom edge; only start a drag near that line
+            if (Math.abs(e.clientY - rect.bottom) > 8) return
+            const startY = e.clientY
+            const startTop = rect.height
+            const max = maxTopFor(root)
+            e.preventDefault()
+            e.stopPropagation()
+            root.classList.add('enkeep-gp-dragging')
+            const onMove = (ev) => {
+              applyHeight(root, clamp(startTop + (ev.clientY - startY), max))
+            }
+            const onUp = () => {
+              window.removeEventListener('pointermove', onMove)
+              window.removeEventListener('pointerup', onUp)
+              root.classList.remove('enkeep-gp-dragging')
+              try { localStorage.setItem(GITPANEL_SPLIT_KEY, root.style.getPropertyValue(GITPANEL_TOP_H_VAR)) } catch (err) { /* ignore */ }
+            }
+            window.addEventListener('pointermove', onMove)
+            window.addEventListener('pointerup', onUp)
+          } catch (err) { /* ignore */ }
+        }
+        const onDouble = (e) => {
+          try {
+            const write = root.querySelector('.dsh-gp-write')
+            if (!write) return
+            const rect = write.getBoundingClientRect()
+            if (Math.abs(e.clientY - rect.bottom) > 8) return
+            e.preventDefault()
+            e.stopPropagation()
+            resetHeight(root)
+          } catch (err) { /* ignore */ }
+        }
+        root.addEventListener('pointerdown', onDown)
+        root.addEventListener('dblclick', onDouble)
+        // restore once the panel is laid out (rAF so getBoundingClientRect is valid)
+        const saved = readSaved()
+        if (saved !== null) {
+          try {
+            requestAnimationFrame(() => {
+              if (root.isConnected) applyHeight(root, clamp(saved, maxTopFor(root)))
+            })
+          } catch (err) { applyHeight(root, saved) }
+        }
+        return () => {
+          try {
+            root.removeEventListener('pointerdown', onDown)
+            root.removeEventListener('dblclick', onDouble)
+            root.classList.remove('enkeep-gp-dragging')
+          } catch (err) { /* ignore */ }
+        }
+      }
+
+      const sync = () => {
+        try {
+          const found = document.querySelector('.dsh-gp')
+          if (found === gp) return
+          if (detachPanel) { detachPanel(); detachPanel = null }
+          gp = found
+          if (gp) detachPanel = bindPanel(gp)
+        } catch (err) { /* ignore */ }
+      }
+
+      try {
+        const observer = new MutationObserver(sync)
+        observer.observe(document.body || document.documentElement, { childList: true, subtree: true })
+        disposeObserver = () => observer.disconnect()
+      } catch (err) { disposeObserver = null }
+      sync()
+
+      return () => {
+        if (disposeObserver) disposeObserver()
+        if (detachPanel) detachPanel()
+        gp = null
+        detachPanel = null
+      }
+    }
+
     // --- Activity selection (pure) -------------------------------------------
     // 三类命中任一即入选：N 小时内更新 / 运行中 / 未读完成(completionUnread)。
     // 排除 blank、subagent 子行、归档会话。返回按 SessionId 字典序的有限列表（稳定不重排）。
@@ -1773,6 +1936,13 @@ window.__ModuleLoader__.load({
           const stopSub = form.subscribe(applyWidth)
           return () => { stopSub(); disposeWidth?.() }
         }, 'enkeep: width')
+
+        // (1b) Optional git-panel split handle: inert when git-panel is absent.
+        ctx.effect(() => {
+          const stopStyle = installGitPanelStyle()
+          const stopSplit = setupGitPanelSplit()
+          return () => { stopSplit(); stopStyle() }
+        }, 'enkeep: gitpanel-split')
 
         // (2) Sidebar launcher + center panel. Structure follows dsh-im:
         // one ctx.inject(['layout']) whose callback owns and returns a single
