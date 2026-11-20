@@ -437,7 +437,10 @@ window.__ModuleLoader__.load({
         const body = root.querySelector('.dsh-gp-body')
         const top = write ? write.getBoundingClientRect().height : 0
         const bottom = body ? body.getBoundingClientRect().height : 0
-        return clamp(top + bottom - GITPANEL_MIN_PX, GITPANEL_MIN_PX)
+        // This is the drag CEILING, not a clamp against MIN. Passing MIN as
+        // clamp's 2nd arg forced the max down to 120px, so every drag snapped
+        // to the minimum and the band appeared stuck. Just floor it at MIN.
+        return Math.max(top + bottom - GITPANEL_MIN_PX, GITPANEL_MIN_PX)
       }
 
       const bindPanel = (root) => {
