@@ -2117,7 +2117,10 @@ window.__ModuleLoader__.load({
         }, ({ form: f, store: s }) => h(EnkeepSettings, { form: f, store: s }))), 'enkeep: settings')
 
         // (5) Below-input composer dock: current-session label + quick prompts in
-        // one full-width row above the ContextMeter. Standard props
+        // one full-width row prepended above the ENTIRE native stats row (turns /
+        // speed / token / cache-hit / context-ratio stay together as one line).
+        // order:-1 puts our row first in the dock so the native pills + ContextMeter
+        // all wrap to the second line as a unit. Standard props
         // (useSessions/sessionId/useInput/inputActions) are auto-injected by the
         // renderer into session-scope slot entries; `form` comes from inject so the
         // quick row reads quickPromptCount live.
@@ -2126,7 +2129,7 @@ window.__ModuleLoader__.load({
           const stopDock = ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
             name: 'conversation.composer.dock',
             id: 'enkeep-composer-dock',
-            order: 100,
+            order: -1,
             inject: () => ({ form }),
           }, (props) => h(ComposerDock, {
             form: props.form,
