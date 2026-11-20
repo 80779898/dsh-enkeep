@@ -1,9 +1,31 @@
 # 会话标题栏显示「目录: 名字」+ 移除底部重复 chip —— 开发计划
 
-> 状态：已规划，待实施
+> 状态：**已实施，但插槽方案已变更（2026-11-20）——见下方「实施后修正」**
 > 落点：写在我们自己的 `dsh-enkeep` 插件（`client.js`，纯前端），**不改任何 DSH 核心源码**
 > 决策已定：① 顶部隐藏原生名、由我们重画成橙色 `dir: title`；② 底部 chip 直接删除（不加配置开关）
 > 本计划不含时间安排，只列步骤、内容（功能 + 技术）、每步完成定义、验收标准、成功标准
+
+> ## ⚠️ 实施后修正（2026-11-20，务必先读）
+>
+> 本文档下文（第 2/4/5/6/7 节）描述的是**旧方案：接管 `conversation.session.header.lineage` 插槽**。
+> 该方案**已废弃**，因为它导致 `dsh web` 启动失败：
+> ```
+> Failed to load plugins
+> @deepseek-ai/dsh-client-ui-subagent
+> web boot: 1 entry did not activate
+> @deepseek-ai/dsh-client-ui-subagent: failed
+> ```
+>
+> - **原因**：`lineage` 是 `kind:"single"` 插槽，**不是空的** —— `@deepseek-ai/dsh-client-ui-subagent/lib/client.js:978`
+>   早已注册它。enkeep 以 `immediately: true` 抢先在 priority 0 注册成功，subagent 再注册时
+>   `single slot "…" already has a registration at priority 0` 抛错 → 其 apply 失败 → 启动守卫报错。
+> - **现方案**：改用 `conversation.session.header.actions`（`kind: "list"`，**叠加式**），
+>   渲染在同一标题行的右侧 actions 带；`HeaderTitle` 只依赖标准 session props（`useSessions` / `sessionId`），
+>   不再需要 crumb 的 owner props（`lineageSessionId` / `displayTitle` / `openTitle`），
+>   也不再需要「隐藏原生名」那条 `:has()` CSS。
+> - **保留部分**：第 1 节目标、删除底部 chip、`sessionLabel` 复用、样式注入模式，下文仍然有效。
+> - **判空成规**：占插槽前必须扫**全部** `client.js`（含官方 `node_modules/@deepseek-ai/*/lib/client.js`），
+>   并区分 `kind: single`（独占，不可抢）/ `keyed`（按 key 共存）/ `list`（叠加，新功能默认落点）。
 
 ---
 
@@ -25,7 +47,31 @@
     - 普通祖先（非末级、非 subagent，`lineage=false`）完全不走插槽，保持纯原生。
   - `lineageOwner = { lineageSessionId, displayTitle, ...(last ? {} : { openTitle }) }` —— **`openTitle` 只在非最后一级（祖先）时出现**，是判定"当前 vs 祖先"的干净信号。
   - 判定 subagent：由 `useSessions(byId[lineageSessionId])` 的 `row.origin === 'subagent'` 得到（owner props 本身不带 subagent 字段）。
-- `conversation.session.header.lineage` 是官方 **single 插槽、scope=session**，标准注入 props（含 `useSessions`、`sessionId`）自动可用；**当前无任何已装插件/核心注册它**，是空的，我们可独占。
+- `conversation.session.header.lineage` 是官方 **single 插槽、scope=session**，标准注入 props（含 `useSessions`、`sessionId`）自动可用。
+
+  > **⚠️ 2026-11-20 实测纠正（本行原文错在此处）**
+  >
+  > 原文写的是「**当前无任何已装插件/核心注册它**，是空的，我们可独占」——**这句是错的**。
+  > `@deepseek-ai/dsh-client-ui-subagent/lib/client.js:978` 早已注册了该插槽（`SubagentHeaderLineage`，子代理面包屑切换器）。
+  >
+  > 当时判空只 grep 了 profile 目录，**漏扫了官方 `node_modules/@deepseek-ai/*`**。
+  > 后果：插件以 `immediately: true` 抢先在 priority 0 注册成功，subagent 随后 `register` 掷出
+  > `single slot "…" already has a registration at priority 0`，其 apply 失败 → fiber 状态 `failed`
+  > → web 启动守卫聚合报错：
+  > ```
+  > web boot: 1 entry did not activate
+  > @deepseek-ai/dsh-client-ui-subagent: failed
+  > ```
+  >
+  > **教训（判空流程，须成规）**：判定一个插槽能否占用，必须
+  > 1. 扫**全部** `client.js`，包含官方 `node_modules/@deepseek-ai/*/lib/client.js` 与 profile 目录；
+  > 2. 先看声明处的 `kind`：
+  >    - `single` = **独占**，看见任何同 priority 注册就必然冲突，**不要抢**；
+  >    - `keyed` = 按 `key` 隔离，不同 key 可共存；
+  >    - `list` = **叠加**，各条目共存，是新功能的默认落点。
+  >
+  > **最终落地**：本功能改用 `conversation.session.header.actions`（`kind: "list"`）—— 与面包屑同行右侧，
+  > 且官方 agent-preset / jobs / subagent / agent-team 已在其中共存。`lineage` 一律不碰。
 - 当前会话的原生名 `span`（`crumbCurrent`，hash class）没有稳定 data 属性；**只在「末级非 subagent」这一种结构里**它才紧跟在 lineage 插槽锚点之前（`{title}{slot}`），这也是唯一需要隐藏的场景。
 - 工作目录现成可读：会话行 `SessionSummary.cwd?: string`（官方 open-in-app 插件同款写法 `useSessions(s => s.byId[sessionId]?.cwd)`）。我们插件**已在用** cwd（CommonWords / QuickPrompts / fetchSkills）。**不要从 displayTitle 反推目录**——无标题会话的 displayTitle 本身就是目录 basename，反推会重复；但我们复用的是现成 `sessionLabel`，它读 `byId[..].cwd`，无显式标题时直接回退成 `dir` 单段，**不会**产生 "dir: dir"。
 - 我们已有 `sessionLabel(row, id)` → `dir: title`（fallback dir → displayTitle → id）、`dirName(cwd)`，直接复用。
@@ -178,7 +224,7 @@
 |---|---|
 | `:has` 隐藏原生名在实测中不命中，或误伤 subagent 的 `/` 分隔符 | 隐藏标记只在末级非 subagent 打（已写入步骤一/二），subagent 结构天然不命中；先只做步骤一验证渲染，再上隐藏；仍不命中则退化为"原生名透明 + 我们 chip 覆盖"；再不行则保留原生名、仅追加目录小标（需回头与用户确认） |
 | DSH 升级改了 crumb/插槽 DOM 结构 | 插槽锚点 `data-slot` 与 `openTitle` 语义稳定；隐藏规则仅失效不报错，enkeep 其它功能不受影响 |
-| 另一插件将来也注册 lineage 插槽（single 独占） | 当前为空；若冲突则该插槽只能有一个胜出，届时评估让位或换用 header.actions 插槽追加 |
+| 另一插件将来也注册 lineage 插槽（single 独占） | **已发生（2026-11-20），见文首修正**：subagent 一直注册着它，我们抢注导致其启动失败。现方案已改用 list 插槽 `conversation.session.header.actions`，不再触碰 lineage，此类冲突从根本上消除 |
 | cwd 偶发缺失 | `sessionLabel` 已有 fallback（displayTitle/id）；chip 至少显示名字 |
 | 超长目录/标题撑破 crumbs | chip 加 `max-width` + `text-overflow:ellipsis`；crumbs 容器原生 `overflow:hidden` |
 | 删除底部 chip 后 composer 行变化 | 保留 `[data-composer-dock]` 布局与快捷提示词样式；回归单行合并（order:-1）避免拆行 |

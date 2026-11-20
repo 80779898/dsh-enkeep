@@ -224,10 +224,15 @@ window.__ModuleLoader__.load({
     // chip was removed (the label now lives in the conversation header only).
     const CURRENT_STYLE_ID = 'enkeep-current'
     const CURRENT_CSS = [
-      // Stretch the shared dock to the composer card width so our left content
-      // lines up with the textarea and the native stats sit flush-right. This only
-      // READS the width var as a max (never writes/overrides it) -> isolation kept.
-      '[data-composer-dock]{width:100%;max-width:var(--dsh-composer-card-max-width,100%);}',
+      // Make the shared dock EXACTLY as wide as the composer card so the
+      // quick-prompt row (left) and the native ContextMeter (right) line up
+      // with the INPUT BOX's outer edges on both ends. Important: native
+      // .uV2eYG_dock{max-width:100%} is injected AFTER our stylesheet at equal
+      // specificity, so without !important the dock falls back to root width
+      // (~25px WIDER than the card), pushing both ends out ~12.5px — the
+      // actual bug. box-sizing keeps width:100% total; native padding-top is
+      // untouched. We only READ the width var -> width-vars stay read-only.
+      '[data-composer-dock]{box-sizing:border-box;width:100%;max-width:var(--dsh-composer-card-max-width,100%)!important;}',
       // Grow to absorb free space, pushing native stats to the right edge.
       '[data-enkeep-composer-current]{',
       'display:flex;justify-content:flex-start;align-items:center;gap:6px;',
@@ -266,10 +271,14 @@ window.__ModuleLoader__.load({
     }
 
     // --- Header title CSS -----------------------------------------------------
-    // Current-session "dir: title" in the conversation crumbs row, plus the
-    // native-name hiding hook. All selectors are scoped to our own data hooks
-    // and the official slot anchor; no hash classes, no bare global selectors,
-    // no width-isolation variables.
+    // Current-session "dir: title" appended to the conversation crumbs row via the
+    // official "conversation.session.header.actions" LIST slot (coexists with the
+    // agent-preset / jobs / subagent / agent-team entries already registered
+    // there). It deliberately does NOT touch "conversation.session.header.lineage":
+    // that slot is kind:"single", and @deepseek-ai/dsh-client-ui-subagent already
+    // owns it — a second registration at the same priority throws and kills the
+    // subagent entry at boot. All selectors are scoped to our own data hooks; no
+    // hash classes, no bare global selectors, no width-isolation variables.
     const HEADER_STYLE_ID = 'enkeep-header'
     const HEADER_CSS = [
       // Orange, slightly heavier than the native tertiary crumb label.
@@ -278,25 +287,6 @@ window.__ModuleLoader__.load({
       'max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
       'padding:4px 8px;border-radius:var(--dsw-radius-md,6px);',
       'font-size:14px;line-height:20px;}',
-      // Hide the native name ONLY in the "last, non-subagent" structure, where
-      // it is the span immediately before the slot anchor. The hide marker is
-      // emitted by HeaderTitle only there; subagent crumbs have no preceding
-      // native name (their title is the unused slot fallback), so this rule
-      // cannot swallow their "/" separator.
-      'span:has(+ [data-slot="conversation.session.header.lineage"]:has([data-enkeep-header-hide-native])){',
-      'display:none;}',
-      // Ancestor crumbs: mirror the native .crumb box using tokens (no hash).
-      '[data-enkeep-header-ancestor]{',
-      'max-width:220px;color:var(--dsw-alias-label-tertiary);',
-      'text-overflow:ellipsis;white-space:nowrap;overflow:hidden;',
-      'background:transparent;border:none;padding:4px 8px;',
-      'border-radius:var(--dsw-radius-md,6px);font-size:14px;line-height:20px;',
-      'font-family:inherit;}',
-      '[data-enkeep-header-ancestor][data-enkeep-header-subagent]{',
-      'font-size:12px;line-height:18px;}',
-      'button[data-enkeep-header-ancestor]{cursor:pointer;}',
-      'button[data-enkeep-header-ancestor]:hover{',
-      'background:var(--dsw-alias-interactive-bg-hover);}',
     ].join('\n')
 
     function installHeaderStyle() {
@@ -703,37 +693,21 @@ window.__ModuleLoader__.load({
       return null
     }
 
-    // Conversation header lineage slot. The official slot is single/session-scope:
-    // registering an entry replaces the fallback for EVERY crumb that renders it,
-    // so we render both the current crumb and subagent ancestors ourselves.
-    // Owner props: lineageSessionId, displayTitle, openTitle (ancestors only).
-    // Standard session-scope props: useSessions, sessionId.
-    function HeaderTitle({ lineageSessionId, displayTitle, openTitle, useSessions, sessionId }) {
+    // Conversation header title, rendered in the official
+    // "conversation.session.header.actions" LIST slot (the right-hand band that
+    // shares the crumbs row). List slots are additive, so this never competes with
+    // the registrations other plugins already own there. Only standard session
+    // scope props are available here — there are no crumb owner props — so the
+    // label is derived from our own session row via useSessions(sessionId).
+    function HeaderTitle({ useSessions, sessionId }) {
       const row = typeof useSessions === 'function'
-        ? useSessions((s) => (lineageSessionId === void 0 ? void 0 : (s && s.byId) ? s.byId[lineageSessionId] : undefined))
+        ? useSessions((s) => (sessionId === void 0 ? void 0 : (s && s.byId) ? s.byId[sessionId] : undefined))
         : void 0
-      const isSubagent = !!(row && row.origin === 'subagent')
-      // openTitle is absent only on the last crumb; double-check with sessionId.
-      const isCurrent = openTitle === void 0 && lineageSessionId === sessionId
-      if (isCurrent) {
-        const label = sessionLabel(row, lineageSessionId)
-        const attrs = { 'data-enkeep-header-title': true, title: label }
-        // Only the last NON-subagent crumb has a preceding native name span.
-        // Tagging a subagent crumb would make the CSS hide its "/" separator.
-        if (!isSubagent) attrs['data-enkeep-header-hide-native'] = true
-        return h('span', attrs, label)
-      }
-      // Ancestor (in practice only subagent ancestors reach this slot): keep the
-      // native look + click behaviour without relying on the owner's hash class.
-      const text = displayTitle || (row && row.displayTitle) || lineageSessionId || ''
-      const attrs = { 'data-enkeep-header-ancestor': true, title: text }
-      if (isSubagent) attrs['data-enkeep-header-subagent'] = true
-      if (typeof openTitle === 'function') {
-        attrs.type = 'button'
-        attrs.onClick = openTitle
-        return h('button', attrs, text)
-      }
-      return h('span', attrs, text)
+      // Nothing to label on a blank/new session — stay out of the header entirely.
+      if (!row || row.blank) return null
+      const label = sessionLabel(row, sessionId)
+      if (!label) return null
+      return h('span', { 'data-enkeep-header-title': true, title: label }, label)
     }
 
     // Above-composer dock: current-session plain label (left) + high-frequency
@@ -2282,22 +2256,24 @@ window.__ModuleLoader__.load({
           return () => { stopOverlay(); stopStyle() }
         }, 'enkeep: activity bar')
 
-        // (3b) Conversation header title: take over the (currently empty) official
-        // single/session-scope lineage slot so the current crumb shows our orange
-        // "dir: title" with the working directory. Standard props (useSessions /
-        // sessionId) are injected by the renderer; owner props (lineageSessionId /
-        // displayTitle / openTitle) come from the host crumb. Style is installed
-        // idempotently and disposed with the registration.
+        // (3b) Conversation header title: append our orange "dir: title" to the
+        // header actions band via the official LIST slot
+        // "conversation.session.header.actions". A list slot is additive, so our
+        // entry coexists with everything already registered there.
+        // NOTE: never use "conversation.session.header.lineage" — it is
+        // kind:"single", is already registered by
+        // @deepseek-ai/dsh-client-ui-subagent, and a second registration at the
+        // same priority throws, which fails that entry at web boot
+        // ("1 entry did not activate"). Style is installed idempotently and
+        // disposed together with the registration.
         ctx.effect(() => {
           const stopStyle = installHeaderStyle()
-          const stopHeader = ctx.slots.inject('conversation.session.header.lineage', () => ctx.slots.register({
-            name: 'conversation.session.header.lineage',
+          const stopHeader = ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+            name: 'conversation.session.header.actions',
             id: 'enkeep-header-title',
+            order: 5,
             inject: () => ({}),
           }, (props) => h(HeaderTitle, {
-            lineageSessionId: props.lineageSessionId,
-            displayTitle: props.displayTitle,
-            openTitle: props.openTitle,
             useSessions: props.useSessions,
             sessionId: props.sessionId,
           })))
