@@ -204,13 +204,18 @@ window.__ModuleLoader__.load({
     }
 
     // --- Composer current-session chip ---------------------------------------
-    // A plain label above the input box (conversation.input.dock), same position
-    // as dsh-git-panel's branch chip but no dropdown. Width follows the text.
+    // Current-session label + quick prompts, rendered on composer.composer.dock
+    // (the composer's bottom row, below the textarea). Our row takes a full line
+    // of its own above the ContextMeter by flex-wrapping the shared dock row.
     const CURRENT_STYLE_ID = 'enkeep-current'
     const CURRENT_CSS = [
+      // The native dock row holds ContextMeter + our slot; let our full-width row
+      // wrap so ContextMeter drops to the line beneath it. Harmless when our row
+      // is absent (single child does not wrap).
+      '[data-composer-dock]{flex-wrap:wrap;row-gap:4px;}',
       '[data-enkeep-composer-current]{',
       'display:flex;justify-content:flex-start;align-items:center;gap:6px;',
-      'width:100%;max-width:var(--dsh-composer-card-max-width,800px);margin:0 auto;}',
+      'flex:0 0 100%;width:100%;max-width:none;margin:0;}',
       '[data-enkeep-current-chip]{',
       'display:inline-flex;align-items:center;max-width:100%;flex:none;',
       'padding:3px 10px;font-size:12px;line-height:18px;',
@@ -1142,7 +1147,7 @@ window.__ModuleLoader__.load({
 
     /**
      * Module-level single source of truth shared by the panel (input.right), the
-     * quick row (input.dock) and the settings editor. Owning sync here avoids two
+     * quick row (composer.dock) and the settings editor. Owning sync here avoids two
      * components each running their own poll/push and clobbering each other.
      */
     function createWordStore() {
@@ -1696,7 +1701,7 @@ window.__ModuleLoader__.load({
 
     /**
      * QuickPrompts — top-N (by useCount) prompt buttons rendered inline right
-     * after the current-session chip, on conversation.input.dock. Single-line
+     * after the current-session chip, on conversation.composer.dock. Single-line
      * horizontal scroll; clicking inserts the full content via the store.
      */
     function QuickPrompts({ form, useInput, inputActions, useSessions, sessionId }) {
@@ -2111,14 +2116,15 @@ window.__ModuleLoader__.load({
           inject: () => ({ form, store: wordStore }),
         }, ({ form: f, store: s }) => h(EnkeepSettings, { form: f, store: s }))), 'enkeep: settings')
 
-        // (5) Above-composer dock: current-session label + quick prompts in one
-        // row. Standard props (useSessions/sessionId/useInput/inputActions) are
-        // auto-injected by the renderer into session-scope slot entries; `form`
-        // comes from inject so the quick row reads quickPromptCount live.
+        // (5) Below-input composer dock: current-session label + quick prompts in
+        // one full-width row above the ContextMeter. Standard props
+        // (useSessions/sessionId/useInput/inputActions) are auto-injected by the
+        // renderer into session-scope slot entries; `form` comes from inject so the
+        // quick row reads quickPromptCount live.
         ctx.effect(() => {
           const stopStyle = installCurrentStyle()
-          const stopDock = ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
-            name: 'conversation.input.dock',
+          const stopDock = ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
+            name: 'conversation.composer.dock',
             id: 'enkeep-composer-dock',
             order: 100,
             inject: () => ({ form }),
