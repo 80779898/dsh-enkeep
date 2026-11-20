@@ -241,6 +241,13 @@ window.__ModuleLoader__.load({
       'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-text-2);cursor:pointer;}',
       '[data-enkeep-quick-item]:hover{border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-text-1);}',
       '[data-enkeep-quick-item]:focus-visible{outline:2px solid var(--dsw-alias-border-l3);outline-offset:-2px;}',
+      // Composer card corner: the native card is --dsw-radius-panel (28px), which is
+      // very round. Soften it to --dsw-radius-lg (16px) to match the small-radius
+      // language of our chips. Use the stable data-composer-card hook (no hash) and
+      // !important because the native rule is a CSS-module class of equal specificity.
+      // Covers the dashed workspace-trigger pseudo-element too. Read-only token use.
+      '[data-composer-card]{border-radius:var(--dsw-radius-lg,16px)!important;}',
+      '[data-composer-card]::after{border-radius:var(--dsw-radius-lg,16px)!important;}',
     ].join('\n')
 
     function installCurrentStyle() {
