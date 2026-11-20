@@ -19,12 +19,15 @@
 
 - 顶部名字渲染在会话标题行的面包屑里（`dsh-client-ui-conversation`）：
   - `ConversationSessionHeader` 用 `useSessions(s => deriveAncestry(s, sessionId))` 得到 `ancestry`（只有 `{id, displayTitle, subagent}`，**刻意不含 cwd**）。
-  - 每个 crumb 渲染时，最后一个（当前会话，非 subagent）是：`{title}` + `renderSlot('conversation.session.header.lineage', lineageOwner, { fallback: null })`。
-  - subagent 祖先 crumb 是：`renderSlot('conversation.session.header.lineage', lineageOwner, { fallback: title })`。
+  - 插槽只在 `lineage = last || subagent` 的 crumb 上渲染，且**两种结构不同**（源码 18012/18025，关键差异）：
+    - **末级、非 subagent**（最常见：`{title}{slot}`）——原生名 `span.crumbCurrent` 是插槽锚点的**前一个兄弟**，需要隐藏。
+    - **末级、subagent / 各级 subagent 祖先**（`renderSlot(lineageOwner, { fallback: title })`）——注册条目后 fallback 的 `title` **根本不渲染**，插槽前面只有 `/` 分隔符（`crumbSep`），**没有原生名可隐藏**。
+    - 普通祖先（非末级、非 subagent，`lineage=false`）完全不走插槽，保持纯原生。
   - `lineageOwner = { lineageSessionId, displayTitle, ...(last ? {} : { openTitle }) }` —— **`openTitle` 只在非最后一级（祖先）时出现**，是判定"当前 vs 祖先"的干净信号。
+  - 判定 subagent：由 `useSessions(byId[lineageSessionId])` 的 `row.origin === 'subagent'` 得到（owner props 本身不带 subagent 字段）。
 - `conversation.session.header.lineage` 是官方 **single 插槽、scope=session**，标准注入 props（含 `useSessions`、`sessionId`）自动可用；**当前无任何已装插件/核心注册它**，是空的，我们可独占。
-- 当前会话的原生名 `span`（`crumbCurrent`，hash class）没有稳定 data 属性；它在 DOM 中**紧跟在 lineage 插槽锚点之前**（`{title}{slot}`）。
-- 工作目录现成可读：会话行 `SessionSummary.cwd?: string`（官方 open-in-app 插件同款写法 `useSessions(s => s.byId[sessionId]?.cwd)`）。我们插件**已在用** cwd（CommonWords / QuickPrompts / fetchSkills）。**不要从 displayTitle 反推目录**——无标题会话的 displayTitle 本身就是目录 basename，会拼出 "dir: dir"。
+- 当前会话的原生名 `span`（`crumbCurrent`，hash class）没有稳定 data 属性；**只在「末级非 subagent」这一种结构里**它才紧跟在 lineage 插槽锚点之前（`{title}{slot}`），这也是唯一需要隐藏的场景。
+- 工作目录现成可读：会话行 `SessionSummary.cwd?: string`（官方 open-in-app 插件同款写法 `useSessions(s => s.byId[sessionId]?.cwd)`）。我们插件**已在用** cwd（CommonWords / QuickPrompts / fetchSkills）。**不要从 displayTitle 反推目录**——无标题会话的 displayTitle 本身就是目录 basename，反推会重复；但我们复用的是现成 `sessionLabel`，它读 `byId[..].cwd`，无显式标题时直接回退成 `dir` 单段，**不会**产生 "dir: dir"。
 - 我们已有 `sessionLabel(row, id)` → `dir: title`（fallback dir → displayTitle → id）、`dirName(cwd)`，直接复用。
 - 底部 chip 由我们自己的 `ComposerDock` 渲染（`data-enkeep-current-chip`），删除即为纯本地改动。
 - 样式注入沿用现有 `data-plugin-css` + `<style>` 幂等模式（如 `installActivityStyle`）。
@@ -34,7 +37,7 @@
 ## 3. 技术方案总览
 
 - **接管插槽**：注册 `conversation.session.header.lineage` 插槽渲染器，组件内用 `openTitle === undefined`（配合 `lineageSessionId === sessionId`）判定当前会话；当前会话渲染我们的橙色 chip，祖先 crumb 回退渲染原生 `displayTitle`（保住可点击/层级）。
-- **隐藏原生名**：新增一条**结构化 `:has()` CSS**，匹配"后面紧跟 lineage 插槽锚点的原生 title span"，仅当 siblings 中含我们的当前标记时隐藏；不依赖 hash class。
+- **隐藏原生名**：新增一条**结构化 `:has()` CSS**，匹配"后面紧跟 lineage 插槽锚点的原生 title span"，仅当 siblings 中含我们的当前标记时隐藏；不依赖 hash class。该标记**只在「末级非 subagent」时打**，subagent 结构下不打（那里没有原生名可隐藏，误隐藏会吃掉 `/` 分隔符）。
 - **颜色**：用现成 token `--dsw-alias-state-warn-primary`（底部 chip 同款橙），带 `data-*` 钩子。
 - **顶层 CSS 收口**：所有新选择器限定在标题栏容器内（经插槽自身的 `data-slot` + 结构锚点），不写裸全局选择器。
 - **删除底部 chip**：`ComposerDock` 不再渲染 chip 元素，仅保留 `QuickPrompts`；若既无 chip 也无 quick，仍按原逻辑返回 null。
@@ -53,8 +56,9 @@
 **技术**
 - 新增 `HeaderTitle` 组件，签名含注入的 `useSessions`、`sessionId` 及插槽 owner props（`lineageSessionId`、`displayTitle`、`openTitle`）。
 - 判定：`const isCurrent = openTitle === void 0 && lineageSessionId === sessionId`（双条件更稳；祖先有 `openTitle`）。
-- 当前会话：`row = useSessions(s => s.byId[lineageSessionId])`，`label = sessionLabel(row, lineageSessionId)`；渲染 `<span data-enkeep-header-title data-enkeep-header-current title=...>{label}</span>`。
-- 祖先：渲染 `<span class-ish=原生外观>{displayTitle}</span>`（不添加 current 标记）；若 `openTitle` 存在则包成可点击按钮 `onClick=openTitle`，保持原交互。
+- 当前会话：`row = useSessions(s => s.byId[lineageSessionId])`，`label = sessionLabel(row, lineageSessionId)`；渲染 `<span data-enkeep-header-title title=...>{label}</span>`。
+- **隐藏标记仅末级非 subagent 才打**：`const isSubagent = !!(row && row.origin === 'subagent')`；仅当 `isCurrent && !isSubagent` 时给上面的 span 再加 `data-enkeep-header-hide-native`（供步骤二的 CSS 命中）。subagent 末级**不打**此标记——它的原生名本就没渲染，打了会误伤 `/` 分隔符。
+- 祖先（含 subagent 祖先）：渲染 `<span>{displayTitle}</span>`（不添加任何 current/hide 标记）；若 `openTitle` 存在则包成可点击按钮 `onClick=openTitle`，保持原交互。
 - 注册：`ctx.slots.register({ name:'conversation.session.header.lineage', id:'enkeep-header-title', scope 由插槽决定, inject:()=>({}) }, props => h(HeaderTitle, {...props}))`，用 `ctx.slots.inject('conversation.session.header.lineage', ...)` 包裹，disposer 清理。
 
 **完成定义**
@@ -63,9 +67,10 @@
 **验收标准**
 - 静态检查：注册用 `inject` 包裹、有 disposer；组件判空（`row`、`useSessions`、owner props）。
 - 静态检查：`isCurrent` 判定用 `openTitle === void 0`；cwd 取自 `byId[..].cwd`，未从 displayTitle 反推。
-- mock：当前会话 chip 文案 = `sessionLabel` 结果；无 cwd 时回退 displayTitle/id；`sessionLabel` 产生 "dir: dir" 的已知情况可接受（契约如此）。
+- mock：当前会话 chip 文案 = `sessionLabel` 结果；无 cwd 时回退 displayTitle/id；无显式标题时回退为 `dir` 单段（不会出现 "dir: dir"）。
 - mock：祖先 crumb 渲染 displayTitle，且 `openTitle` 存在时按钮可点击。
 - mock：`lineageSessionId !== sessionId` 时不渲染 current 标记。
+- mock：`isCurrent && isSubagent`（末级 subagent）渲染 chip 但**不**打 `data-enkeep-header-hide-native`；`isCurrent && !isSubagent` 才打。
 - 未影响 composer/activity-bar 的既有注入。
 
 **成功标准**
@@ -82,8 +87,11 @@
 - 在 `ACTIVITY_CSS`（或合适的既有样式表）追加：
   - `[data-enkeep-header-title]{ color:var(--dsw-alias-state-warn-primary,#f59e0b); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:...; }`
   - 隐藏原生名（结构化）：
-    `[data-slot="conversation.session.header.lineage"]:has(> [data-enkeep-header-current])` 的**前一个兄弟 span** 用 `:has` 反向匹配隐藏。具体写法在实施时以实际 DOM 为准（目标：只隐藏"紧跟我们插槽锚点之前、且该锚点内含 `[data-enkeep-header-current]`"的那个原生 title span），需实测确认不误伤祖先的 "/" 分隔符与 displayTitle。
-  - 兜底：若 `:has` 方案在实测中不稳定，退化为"原生名缩为透明 + 我们的 chip 覆盖同位置"，仍不依赖 hash class。
+    `[data-slot="conversation.session.header.lineage"]:has(> [data-enkeep-header-title] > ... )` 这类写法需以实际 DOM 为准；**关键约束**：只有当插槽锚点内含 `data-enkeep-header-hide-native` 标记（步骤一仅末级非 subagent 才打）时，才隐藏"紧跟该锚点之前的兄弟 span"。写法形如：
+    `span:has(+ [data-slot="conversation.session.header.lineage"]:has([data-enkeep-header-hide-native])){display:none}`。
+    因为 subagent 结构不打该标记，此规则不会命中 `/` 分隔符或 subagent 祖先名。
+  - 实测两种结构都要覆盖：①末级非 subagent（原生名隐藏、chip 显示）；②末级 subagent（chip 显示、`/` 分隔符与祖先名完好、无原生名可隐藏）。
+  - 兜底：若 `:has` 方案在实测中不稳定，退化为"原生名缩为透明 + 我们的 chip 覆盖同位置"，仍不依赖 hash class，且同样只对打了 hide 标记的结构生效。
 
 **完成定义**
 - 顶部当前会话只剩一个橙色 `dir: title`；祖先面包屑（含分隔符、可点击名）与改动前一致。
@@ -135,7 +143,7 @@
 - 范围审核：仅 `client.js` + 本文档；无新依赖、无构建、无 schema/config 变更、不碰 skill-picker、依赖 URL 无 SHA、词库数据未变、不改任何 DSH 核心源码。
 - 同步安装副本，`Get-FileHash` 校验源与副本一致；`node --check` 安装副本。
 - 提交推送，`HEAD == origin/main`，工作区干净。
-- 从线上 preload 取 `rev`，拉取插件脚本核实新标记（`data-enkeep-header-title` / `data-enkeep-header-current`）已上线、且底部 chip 渲染代码已移除（**不重启 dsh web**）。
+- 从线上 preload 取 `rev`，拉取插件脚本核实新标记（`data-enkeep-header-title` / `data-enkeep-header-hide-native`）已上线、且底部 chip 渲染代码已移除（**不重启 dsh web**）。
 
 **完成定义**
 - 检查全通过、工作区干净、线上副本含新代码。
@@ -156,7 +164,7 @@
 - 只占用空插槽 `conversation.session.header.lineage`，不改插槽本身注册、不 fork 核心。
 - cwd 只从 `byId[..].cwd` 读，绝不从 displayTitle 反推。
 - 祖先 crumb 零回归：外观、分隔符、可点击均保持原生。
-- 隐藏原生名不依赖 hash class；用 `:has` + 我们自己的 `data-enkeep-header-current` 标记条件化。
+- 隐藏原生名不依赖 hash class；用 `:has` + 我们自己的 `data-enkeep-header-hide-native` 标记条件化（仅末级非 subagent）。
 - 宽度隔离：不写 `--dsh-chat-content-width` / `--dsh-composer-card-max-width`；不写裸 `:root`/`body` 规则。
 - 不破坏既有功能：侧栏隐藏（纯声明式）、活动区拖拽与 5 按钮、composer 单行合并与圆角、常用词 v2、技能快捷插入、awaiting、git-panel split grip。
 - 不动词库 v2 schema、不碰 skill-picker、依赖保持 `git+https://github.com/80779898/dsh-enkeep.git`（无 SHA）。
@@ -168,7 +176,7 @@
 
 | 风险 | 兜底 |
 |---|---|
-| `:has` 隐藏原生名在实测中不命中/误伤祖先 | 先只做步骤一验证渲染，再上隐藏；不命中则退化为"原生名透明 + 我们 chip 覆盖"；仍不行则保留原生名、仅追加目录小标（需回头与用户确认） |
+| `:has` 隐藏原生名在实测中不命中，或误伤 subagent 的 `/` 分隔符 | 隐藏标记只在末级非 subagent 打（已写入步骤一/二），subagent 结构天然不命中；先只做步骤一验证渲染，再上隐藏；仍不命中则退化为"原生名透明 + 我们 chip 覆盖"；再不行则保留原生名、仅追加目录小标（需回头与用户确认） |
 | DSH 升级改了 crumb/插槽 DOM 结构 | 插槽锚点 `data-slot` 与 `openTitle` 语义稳定；隐藏规则仅失效不报错，enkeep 其它功能不受影响 |
 | 另一插件将来也注册 lineage 插槽（single 独占） | 当前为空；若冲突则该插槽只能有一个胜出，届时评估让位或换用 header.actions 插槽追加 |
 | cwd 偶发缺失 | `sessionLabel` 已有 fallback（displayTitle/id）；chip 至少显示名字 |
