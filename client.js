@@ -98,12 +98,18 @@ window.__ModuleLoader__.load({
       '[data-sidebar-collapsed] [data-enkeep-activity-bar]{',
       'right:calc(56px + var(--dsh-sidebar-inline-padding, 12px) + 8px);}',
       // Web 侧边栏"完全隐藏"：原生收起仍留 56px 图标栏，这里把 frame 的
-      // 第三列（侧栏列）强制压到 0。用 CSS 变量 + !important，不碰 React 的
-      // 内联列宽，重绘时由 MutationObserver 重新计算变量即可。
+      // 第三列（侧栏列）强制压到 0。覆盖写在样式表 !important 规则里，不改写
+      // React 的 grid-template-columns 内联声明；重绘时由 observer 重算变量。
+      // fallback 只是防「变量意外缺失导致整条声明失效」的兜底；正常流程下
+      // 变量一定先于标记写入，且解析失败时压根不打标记，故不会误伤右栏轨。
       '[data-enkeep-sidebar-hidden]{',
       'grid-template-columns:var(--dsh-enkeep-grid-cols, minmax(0px, 0px) minmax(0px, 1fr) 0px)!important;}',
       '[data-enkeep-sidebar-hidden] [data-enkeep-sidebar-col]{border-left-color:transparent!important;}',
-      '[data-enkeep-sidebar-hidden] [data-enkeep-activity-bar]{',
+      // 原生状态保持不动，侧栏拖拽手柄不会自行消失，这里用稳定钩子直接隐藏。
+      '[data-enkeep-sidebar-hidden] [data-side="sidebar"]{display:none!important;}',
+      // 加 html 前缀把特异性提到 (0,3,0)，稳定压过 [data-sidebar-collapsed] 那条，
+      // 且不依赖原生折叠属性（原生状态在竞态下可能变化）。
+      'html [data-enkeep-sidebar-hidden] [data-enkeep-activity-bar]{',
       'right:calc(var(--dsh-sidebar-inline-padding, 12px) + 8px);}',
       '[data-enkeep-activity-head]{display:flex;align-items:center;gap:6px;',
       'font-size:12px;opacity:.75;padding:0 2px 2px;cursor:move;user-select:none;}',
@@ -736,7 +742,7 @@ window.__ModuleLoader__.load({
       try { localStorage.setItem(ACTIVITY_PINNED_KEY, JSON.stringify(ids)) } catch (e) { /* ignore */ }
     }
 
-    function ActivityBar({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession, toggleSidebar, useSessions, useSessionStatus, useWorkspaces }) {
+    function ActivityBar({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession, useSessions, useSessionStatus, useWorkspaces }) {
       const [collapsed, setCollapsed] = React.useState(false)
       const [sidebarHidden, setSidebarHidden] = React.useState(readSidebarHidden)
       const [, setTick] = React.useState(0)
@@ -806,17 +812,17 @@ window.__ModuleLoader__.load({
         return () => { clearInterval(timer); window.removeEventListener('focus', onFocus) }
       }, [])
 
-      // Web 侧边栏完全隐藏：先让原生收起一次（移除拖拽手柄、置 data-sidebar-collapsed），
-      // 再把 frame 第三列强制压到 0。覆盖写在样式表的 !important 规则里、值存 CSS 变量，
-      // 不修改 React 的内联列宽，因此重绘不会互相覆盖；卸载/关闭时移除标记即可恢复。
+      // Web 侧边栏完全隐藏（纯声明式）：只打 DOM/CSS 标记，不调用原生 toggleSidebar。
+      // 原生状态保持不动 → 没有双切/异步属性滞后/卸载误恢复等问题；“显示”即移除标记、
+      // 精确回到用户原来的状态（展开还是 56px 图标栏都保持原样）。拖拽手柄用 CSS 隐藏。
       React.useEffect(() => {
         if (!sidebarHidden || typeof document === 'undefined') return undefined
         const frame = getAppFrame()
         if (!frame) return undefined
 
-        if (!frame.hasAttribute('data-sidebar-collapsed') && typeof toggleSidebar === 'function') {
-          toggleSidebar()
-        }
+        // 解析不出列宽就不打标记（宁可不隐藏），避免 CSS fallback 误伤右栏轨道。
+        const initial = sidebarGridWithZeroTrack(frame)
+        if (!initial) return undefined
 
         const bottom = frame.querySelector('[data-shell-bottom]')
         const sidebarCol = bottom && bottom.previousElementSibling
@@ -837,26 +843,13 @@ window.__ModuleLoader__.load({
         })
         obs.observe(frame, { attributes: true, attributeFilter: ['style'] })
 
-        const clearMarks = () => {
+        return () => {
+          obs.disconnect()
           frame.removeAttribute('data-enkeep-sidebar-hidden')
           frame.style.removeProperty('--dsh-enkeep-grid-cols')
           if (sidebarCol) sidebarCol.removeAttribute('data-enkeep-sidebar-col')
         }
-        return () => {
-          obs.disconnect()
-          // 恢复原生展开（“显示”= 完整侧边栏）。延后一帧再摘覆盖，避免闪一下 56px 图标栏；
-          // 期间若用户又点了隐藏（localStorage 已写），则跳过摘除，交给新的 effect 接管。
-          if (frame.isConnected && frame.hasAttribute('data-sidebar-collapsed') && typeof toggleSidebar === 'function') {
-            toggleSidebar()
-            requestAnimationFrame(() => {
-              if (!frame.isConnected || readSidebarHidden()) return
-              clearMarks()
-            })
-          } else {
-            clearMarks()
-          }
-        }
-      }, [sidebarHidden, toggleSidebar])
+      }, [sidebarHidden])
 
       // Ref mirror: no side effect inside the state updater (StrictMode double-invoke),
       // and rapid double-clicks always flip from the latest committed value.
@@ -1066,7 +1059,7 @@ window.__ModuleLoader__.load({
               onClick: onToggleSidebarHide,
               title: sidebarHidden ? '显示侧边栏' : '隐藏侧边栏',
               'aria-label': sidebarHidden ? '显示侧边栏' : '隐藏侧边栏',
-              'aria-pressed': sidebarHidden ? true : undefined,
+              'aria-pressed': sidebarHidden,
             }, h(HeaderIcon, { kind: sidebarHidden ? 'sidebar-show' : 'sidebar-hide' })))),
         !collapsed && items.map((it) =>
           h('div', {
@@ -2137,12 +2130,6 @@ window.__ModuleLoader__.load({
         ctx.effect(() => {
           const stopStyle = installActivityStyle()
           const get = (name) => (typeof ctx.get === 'function' ? ctx.get(name) : undefined)
-          // 原生侧边栏收起/展开（只允许收起到 56px 图标栏；完全隐藏由 ActivityBar 的 CSS 覆盖完成）。
-          const toggleSidebar = () => {
-            const layout = get('layout')
-            if (layout && typeof layout.toggleSidebar === 'function') layout.toggleSidebar()
-            else console.warn('[enkeep] layout.toggleSidebar unavailable')
-          }
           const openSession = (sessionId) => {
             const uiWorkspace = get('uiWorkspace')
             if (uiWorkspace && typeof uiWorkspace.openSession === 'function') {
@@ -2212,7 +2199,7 @@ window.__ModuleLoader__.load({
             name: 'shell.overlay',
             id: 'dsh-enkeep.activity-bar',
             order: 100,
-            inject: () => ({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession, toggleSidebar }),
+            inject: () => ({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession }),
           }, (props) => h(ActivityBar, {
             form: props.form,
             openSession: props.openSession,
@@ -2223,7 +2210,6 @@ window.__ModuleLoader__.load({
             unpinSession: props.unpinSession,
             archiveSession: props.archiveSession,
             renameSession: props.renameSession,
-            toggleSidebar: props.toggleSidebar,
             useSessions: props.useSessions,
             useSessionStatus: props.useSessionStatus,
             useWorkspaces: props.useWorkspaces,
