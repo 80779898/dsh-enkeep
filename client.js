@@ -369,13 +369,12 @@ window.__ModuleLoader__.load({
     const GITPANEL_MIN_PX = 120 // keep both the changes list and the body at least this tall
     const GITPANEL_CSS = [
       '.dsh-gp .dsh-gp-write{position:relative;}',
-      // Clearly visible draggable grip sitting on the write/body divider. An accent
-      // pill that brightens on hover — the previous border-colored 6px bar at .6
-      // opacity was effectively invisible, so users saw no affordance at all.
-      '.dsh-gp .dsh-gp-write::after{content:"";position:absolute;left:10%;right:10%;bottom:-5px;',
-      'height:10px;border-radius:6px;cursor:row-resize;touch-action:none;z-index:7;',
-      'background:var(--accent,#1976d2);opacity:.5;box-shadow:0 0 0 1px rgba(0,0,0,.15);}',
-      '.dsh-gp:hover .dsh-gp-write::after,.dsh-gp.enkeep-gp-dragging .dsh-gp-write::after{opacity:1;}',
+      // Subtle grip on the write/body divider: hidden by default, fades in as a
+      // thin neutral line only while the pointer is near, stays visible while dragging.
+      '.dsh-gp .dsh-gp-write::after{content:"";position:absolute;left:20%;right:20%;bottom:-2px;',
+      'height:4px;border-radius:2px;cursor:row-resize;touch-action:none;z-index:7;',
+      'background:var(--muted,#888);opacity:0;transition:opacity .12s ease;}',
+      '.dsh-gp-write:hover::after,.dsh-gp.enkeep-gp-dragging .dsh-gp-write::after{opacity:.55;}',
       // Only when a split height is committed does the layout switch to a fixed
       // top band; default (no var) keeps git-panel's exact native layout.
       `.dsh-gp.${GITPANEL_SPLIT_CLASS} .dsh-gp-write{`,
