@@ -369,18 +369,23 @@ window.__ModuleLoader__.load({
     const GITPANEL_MIN_PX = 120 // keep both the changes list and the body at least this tall
     const GITPANEL_CSS = [
       '.dsh-gp .dsh-gp-write{position:relative;}',
-      // The draggable grip sits on the write/body divider (write's bottom border).
-      '.dsh-gp .dsh-gp-write::after{content:"";position:absolute;left:50%;bottom:-3px;',
-      'transform:translateX(-50%);width:36px;height:6px;border-radius:3px;',
-      'background:var(--border);cursor:row-resize;touch-action:none;z-index:6;opacity:.6;}',
-      '.dsh-gp .dsh-gp-write::after:hover,.dsh-gp.enkeep-gp-dragging .dsh-gp-write::after{',
-      'background:var(--accent);opacity:1;}',
+      // Clearly visible draggable grip sitting on the write/body divider. An accent
+      // pill that brightens on hover — the previous border-colored 6px bar at .6
+      // opacity was effectively invisible, so users saw no affordance at all.
+      '.dsh-gp .dsh-gp-write::after{content:"";position:absolute;left:10%;right:10%;bottom:-5px;',
+      'height:10px;border-radius:6px;cursor:row-resize;touch-action:none;z-index:7;',
+      'background:var(--accent,#1976d2);opacity:.5;box-shadow:0 0 0 1px rgba(0,0,0,.15);}',
+      '.dsh-gp:hover .dsh-gp-write::after,.dsh-gp.enkeep-gp-dragging .dsh-gp-write::after{opacity:1;}',
       // Only when a split height is committed does the layout switch to a fixed
       // top band; default (no var) keeps git-panel's exact native layout.
       `.dsh-gp.${GITPANEL_SPLIT_CLASS} .dsh-gp-write{`,
       `height:var(${GITPANEL_TOP_H_VAR},auto);flex:none;min-height:0;overflow:hidden;}`,
       `.dsh-gp.${GITPANEL_SPLIT_CLASS} .dsh-gp-changes{`,
       'flex:1 1 auto;min-height:0;overflow-y:auto;}',
+      // Lift git-panel's own per-group 140px caps so the file lists actually grow
+      // with the top band; the changes container above absorbs the scrolling.
+      `.dsh-gp.${GITPANEL_SPLIT_CLASS} .dsh-gp-changes-list{max-height:none;}`,
+      `.dsh-gp.${GITPANEL_SPLIT_CLASS} .dsh-gp-changes-pre{max-height:none;}`,
       `.dsh-gp.${GITPANEL_SPLIT_CLASS} .dsh-gp-body{flex:1 1 auto;min-height:0;overflow:auto;}`,
     ].join('\n')
 
@@ -442,8 +447,8 @@ window.__ModuleLoader__.load({
             const write = root.querySelector('.dsh-gp-write')
             if (!write) return
             const rect = write.getBoundingClientRect()
-            // grip is at the bottom edge; only start a drag near that line
-            if (Math.abs(e.clientY - rect.bottom) > 8) return
+            // grip is at the bottom edge; only start a drag near that line (generous hit zone)
+            if (Math.abs(e.clientY - rect.bottom) > 14) return
             const startY = e.clientY
             const startTop = rect.height
             const max = maxTopFor(root)
@@ -468,7 +473,7 @@ window.__ModuleLoader__.load({
             const write = root.querySelector('.dsh-gp-write')
             if (!write) return
             const rect = write.getBoundingClientRect()
-            if (Math.abs(e.clientY - rect.bottom) > 8) return
+            if (Math.abs(e.clientY - rect.bottom) > 14) return
             e.preventDefault()
             e.stopPropagation()
             resetHeight(root)
