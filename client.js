@@ -205,17 +205,18 @@ window.__ModuleLoader__.load({
 
     // --- Composer current-session chip ---------------------------------------
     // Current-session label + quick prompts, rendered on composer.composer.dock
-    // (the composer's bottom row, below the textarea). Our row takes a full line
-    // of its own above the ContextMeter by flex-wrapping the shared dock row.
+    // (the composer's bottom row, below the textarea). Our content sits on the
+    // LEFT of that single row; the native stats pills + ContextMeter stay RIGHT.
     const CURRENT_STYLE_ID = 'enkeep-current'
     const CURRENT_CSS = [
-      // The native dock row holds ContextMeter + our slot; let our full-width row
-      // wrap so ContextMeter drops to the line beneath it. Harmless when our row
-      // is absent (single child does not wrap).
-      '[data-composer-dock]{flex-wrap:wrap;row-gap:4px;}',
+      // Stretch the shared dock to the composer card width so our left content
+      // lines up with the textarea and the native stats sit flush-right. This only
+      // READS the width var as a max (never writes/overrides it) -> isolation kept.
+      '[data-composer-dock]{width:100%;max-width:var(--dsh-composer-card-max-width,100%);}',
+      // Grow to absorb free space, pushing native stats to the right edge.
       '[data-enkeep-composer-current]{',
       'display:flex;justify-content:flex-start;align-items:center;gap:6px;',
-      'flex:0 0 100%;width:100%;max-width:none;margin:0;}',
+      'flex:1 1 auto;width:auto;min-width:0;max-width:none;margin:0;}',
       '[data-enkeep-current-chip]{',
       'display:inline-flex;align-items:center;max-width:100%;flex:none;',
       'padding:3px 10px;font-size:12px;line-height:18px;',
