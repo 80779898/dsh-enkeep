@@ -229,7 +229,7 @@ window.__ModuleLoader__.load({
       '[data-enkeep-lastprompt]{',
       'position:relative;display:flex;justify-content:flex-start;',
       'box-sizing:border-box;width:100%;max-width:var(--dsh-composer-card-max-width, 800px);',
-      'margin:0 auto;padding:0 0 4px;pointer-events:auto;',
+      'margin:0 auto -4px;padding:0;pointer-events:auto;',
       '}',
       '[data-enkeep-lastprompt-inner]{',
       'display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;',
