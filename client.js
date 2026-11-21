@@ -2453,11 +2453,12 @@ window.__ModuleLoader__.load({
           return () => { stopOverlay(); stopDock(); stopStyle() }
         }, 'enkeep: activity bar')
 
-        // (3a) Last user prompt bar: idempotent style install + dispose. The bar
-        // DOM itself is a React component rendered inside the activity bar's
-        // shell.overlay entry (a sibling), so it is never clobbered by official
-        // message-list re-renders. Observer + text extraction live in the
-        // component; this effect only owns the stylesheet lifecycle.
+        // (3a) Last user prompt bar stylesheet: idempotent install + dispose.
+        // The bar DOM itself is a React component registered into the additive
+        // conversation.input.dock list slot (see the activity-bar effect above)
+        // and lives in normal document flow, so it never overlaps other plugins
+        // and is never clobbered by official message-list re-renders. Observer +
+        // text extraction live in the component; this effect only owns the CSS.
         ctx.effect(() => {
           const stopStyle = installLastPromptStyle()
           return () => { stopStyle() }
