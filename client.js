@@ -359,6 +359,37 @@ window.__ModuleLoader__.load({
       return () => style.remove()
     }
 
+    // --- Compact header CSS: merge the native two header rows into one -------
+    // Native header is a grid: title row (~y10) + tab row (~y50), 76px tall.
+    // We compress it to 48px and absolutely position the tab strip right after
+    // the title crumb using vars published by HeaderTitle; the actions band is
+    // pushed right by the tab span so nothing overlaps. Every selector is scoped
+    // to the conversation header via :has() on the stable lineage-slot anchor
+    // (no hash classes, no bare globals). Vars carry fallbacks so a failed
+    // measurement still leaves a sane single-row layout instead of a broken one.
+    const COMPACT_HEADER_STYLE_ID = 'enkeep-header-compact'
+    const HDR_CONTAINER = 'header:has([data-slot="conversation.session.header.lineage"])'
+    const COMPACT_HEADER_CSS = [
+      HDR_CONTAINER + '{',
+      'position:relative;height:48px;min-height:48px;}',
+      HDR_CONTAINER + ' [role="tablist"]{',
+      'position:absolute;top:12px;left:var(--enkeep-tabs-left, 227px);z-index:5;}',
+      HDR_CONTAINER + ' [class*="headerActions"]{',
+      'margin-left:var(--enkeep-tabs-shift, 122px);}',
+    ].join('\n')
+
+    function installCompactHeaderStyle() {
+      if (typeof document === 'undefined') return () => {}
+      const existing = document.querySelector(`style[data-plugin-css="${COMPACT_HEADER_STYLE_ID}"]`)
+      if (existing) return () => {}
+      const style = document.createElement('style')
+      style.dataset.plugin = 'dsh-enkeep'
+      style.dataset.pluginCss = COMPACT_HEADER_STYLE_ID
+      style.textContent = COMPACT_HEADER_CSS
+      document.head.appendChild(style)
+      return () => style.remove()
+    }
+
     // --- Common words panel CSS (ported from dsh-wordbox, renamed prefix) -----
     // Prefix ekeep-w- so it can never collide with cwbx_* / data-enkeep-*.
     // NOTE: width isolation — the panel only ever reads the composer card rect
@@ -771,6 +802,74 @@ window.__ModuleLoader__.load({
         // content:var() needs a quoted CSS string; JSON.stringify handles escaping.
         document.documentElement.style.setProperty('--enkeep-dir-prefix', JSON.stringify(prefix))
       }, [prefix])
+
+      // Compact-header layout driver: measure the native title crumb's right edge
+      // and the tab strip's content span, then publish them as CSS vars for the
+      // compact CSS. Only READS official DOM; never mutates React-owned nodes.
+      // getBoundingClientRect() is viewport-based, while CSS left is relative to
+      // the containing block (header, made position:relative by compact CSS), so
+      // we subtract header.left — otherwise tabs land 280px too far right.
+      React.useLayoutEffect(() => {
+        if (typeof document === 'undefined') return () => {}
+        const root = document.documentElement
+        let raf = 0
+        let ro = null
+        let mo = null
+        let tries = 0
+        const clear = () => {
+          root.style.removeProperty('--enkeep-tabs-left')
+          root.style.removeProperty('--enkeep-tabs-shift')
+        }
+        const measure = () => {
+          const crumb = document.querySelector(HDR_CRUMB)
+          const header = crumb && crumb.closest('header')
+          const tabs = header && header.querySelector('[role="tablist"]')
+          const allTabs = tabs ? [...tabs.querySelectorAll('[role="tab"]')] : null
+          // Ignore hidden tabs (e.g. trajectory when developer tools are off);
+          // a display:none tab has a zero rect and would make the span negative.
+          const tabEls = allTabs ? allTabs.filter((t) => t.getBoundingClientRect().width > 0) : null
+          if (!crumb || !header || !tabs || !tabEls || !tabEls.length) { clear(); return }
+          const first = tabEls[0].getBoundingClientRect()
+          const last = tabEls[tabEls.length - 1].getBoundingClientRect()
+          // CSS absolute left is relative to the containing block's PADDING box,
+          // whose left = header border-box left + padding-left. Subtract both —
+          // using only header.left leaves the strip padding-left (20px) too far right.
+          const headerPad = parseFloat(getComputedStyle(header).paddingLeft) || 0
+          const left = Math.round(crumb.getBoundingClientRect().right - header.getBoundingClientRect().left - headerPad)
+          // Content span is stable whether tabs are block-level or absolute;
+          // +34px is a small breathing gap before the actions band.
+          const shift = Math.round(last.right - first.left) + 34
+          root.style.setProperty('--enkeep-tabs-left', left + 'px')
+          root.style.setProperty('--enkeep-tabs-shift', shift + 'px')
+        }
+        const schedule = () => { if (raf) cancelAnimationFrame(raf); raf = requestAnimationFrame(measure) }
+        const setup = () => {
+          const crumb = document.querySelector(HDR_CRUMB)
+          const header = crumb && crumb.closest('header')
+          const tabs = header && header.querySelector('[role="tablist"]')
+          if (!crumb || !header || !tabs) {
+            if (tries++ < 60) raf = requestAnimationFrame(setup)
+            return
+          }
+          measure()
+          if (typeof ResizeObserver !== 'undefined') {
+            ro = new ResizeObserver(schedule)
+            ro.observe(tabs)
+            ro.observe(header)
+          }
+          if (typeof MutationObserver !== 'undefined') {
+            mo = new MutationObserver(schedule)
+            mo.observe(crumb, { childList: true, characterData: true, subtree: true })
+          }
+        }
+        raf = requestAnimationFrame(setup)
+        return () => {
+          if (raf) cancelAnimationFrame(raf)
+          if (ro) ro.disconnect()
+          if (mo) mo.disconnect()
+          clear()
+        }
+      }, [])
       return null
     }
 
@@ -2476,6 +2575,7 @@ window.__ModuleLoader__.load({
         // ("1 entry did not activate"). Style/disposer are idempotent.
         ctx.effect(() => {
           const stopStyle = installHeaderStyle()
+          const stopCompactStyle = installCompactHeaderStyle()
           const stopHeader = ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
             name: 'conversation.session.header.actions',
             id: 'enkeep-header-title',
@@ -2488,8 +2588,11 @@ window.__ModuleLoader__.load({
           return () => {
             stopHeader()
             stopStyle()
+            stopCompactStyle()
             if (typeof document !== 'undefined') {
               document.documentElement.style.removeProperty('--enkeep-dir-prefix')
+              document.documentElement.style.removeProperty('--enkeep-tabs-left')
+              document.documentElement.style.removeProperty('--enkeep-tabs-shift')
             }
           }
         }, 'enkeep: header title')

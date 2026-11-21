@@ -1,6 +1,7 @@
 # 顶部标题栏「对话 / 轨迹」tab 嵌入标题行 —— 开发计划
 
-> 状态：**规划中（未实施）** —— 本文只规划步骤与内容（功能 + 技术），不含时间安排
+> 状态：**已实施（2026-11-21）** —— 4 步全部完成并通过真实页面回归，见 §9 实施记录
+> 原文只规划步骤与内容（功能 + 技术），不含时间安排
 > 落点：写在我们自己的 `dsh-enkeep` 插件（`client.js`，纯前端），**不改任何 DSH 核心源码、不改其他插件**
 > 目标：把当前 header 的上下两行合并为一行——tabs 嵌入标题后面，"标准模式/后台任务"等自然后移，
 > header 高度从 76px 压到 48px，下方消息区上移 28px。
@@ -69,8 +70,10 @@
 - **⚠️ 坐标基准（实测，务必遵守）**：`getBoundingClientRect().right` 是**视口坐标**，而 tabs 绝对定位的包含块是
   `.wSkVaW_root`（`position:relative`，left=280），CSS `left` 是**相对包含块坐标**。实测：crumb 右边缘视口值
   =507.25，直接赋给 `left` → tabs 实际 x=787.25（偏右 280px）；必须减去包含块 left（507.25−280=227.25）才得到
-  正确的 x=507.25。因此测量写入变量前须做转换：`left = crumb.getBoundingClientRect().right - containingBlock.getBoundingClientRect().left`
-  （推荐在测量时读取 tabs 的 `offsetParent` 的 left，或给 header 显式设 `position:relative` 后读取 header 的 left）。
+  正确的 x=507.25。因此测量写入变量前须做转换：`left = crumb.right - header.left - paddingLeft(header)`。
+  **⚠️ 实施时又踩一层坑（已修正）**：CSS 绝对定位的 `left` 相对包含块的 **padding box**，而 header 有
+  `padding-left:20px`，若只减 header.left（不减 padding）仍偏右 20px（实测 tabs x=527、gap=20）。
+  最终公式：`left = crumb.getBoundingClientRect().right - header.getBoundingClientRect().left - parseFloat(getComputedStyle(header).paddingLeft)`。
 
 ### 2.5 风险（如实记录）
 1. **动态位置**：标题长度随会话名/目录变化，tabs 落点必须实时跟随；固定像素会压字。
@@ -116,9 +119,8 @@ client.js（唯一改动文件）
 **技术**
 - 扩展现有 `HeaderTitle`（保持空渲染、仍挂在 `conversation.session.header.actions` list slot）。
 - `useLayoutEffect` 内 `requestAnimationFrame` 测量；`ResizeObserver` 监听 crumb 与 tablist 尺寸变化。
-- **坐标转换**：`--enkeep-tabs-left` 必须用 `crumb.getBoundingClientRect().right - tabs.offsetParent.getBoundingClientRect().left`
-  （相对包含块，见 §2.4），不能直接用视口坐标，否则 tabs 偏右 280px；配合步骤二给 header 设
-  `position:relative` 时，tabs 的 `offsetParent` 即 header，基准与 §2.4 一致。
+- **坐标转换**：`--enkeep-tabs-left` 必须用 `crumb.getBoundingClientRect().right - header.getBoundingClientRect().left - parseFloat(getComputedStyle(header).paddingLeft)`
+  （相对包含块 padding box，见 §2.4），不能直接用视口坐标（偏 280px）也不能漏减 padding（偏 20px）。
 - 写 `--enkeep-tabs-left` / `--enkeep-tabs-shift` 到 `document.documentElement.style`（`setProperty`，值带 `px`）。
 - 返回 disposer：断开 observer、取消 pending rAF、`removeProperty`。
 
@@ -220,3 +222,44 @@ client.js（唯一改动文件）
 
 1. `headerActions` 的稳定选择器：优先 `[class*="headerActions"]`（语义片段抗哈希前缀变化）；若升级后语义后缀也变，需同步更新。开工时再实测确认一次。
 2. 压缩 header 高度是否影响其他注入 header 的插件（如 agent-preset / jobs 的 actions 项）——步骤二需在真实页面扫一遍 actions 带内容。
+
+---
+
+## 9. 实施记录（2026-11-21）
+
+### 9.1 改动清单（仅 `client.js`）
+- `HeaderTitle`：新增 `useLayoutEffect` 布局驱动——`requestAnimationFrame` + `ResizeObserver`(tabs/header) +
+  `MutationObserver`(crumb 文本) 测量并写 `--enkeep-tabs-left` / `--enkeep-tabs-shift`；完整 disposer 断开观察、
+  取消 rAF、清变量。**只读官方 DOM，不写 React 节点**。
+- 新增 `COMPACT_HEADER_STYLE_ID = 'enkeep-header-compact'` + `installCompactHeaderStyle()`：
+  `header:has([data-slot=...lineage]){position:relative;height:48px;min-height:48px}`、
+  `tablist{position:absolute;top:12px;left:var(--enkeep-tabs-left,227px);z-index:5}`、
+  `headerActions{margin-left:var(--enkeep-tabs-shift,122px)}`——全部限定在会话 header 内。
+- header effect 安装/注销 compact 样式，disposer 一并清 `--enkeep-dir-prefix` / `--enkeep-tabs-left` / `--enkeep-tabs-shift`。
+
+### 9.2 实测几何（1400×900，真实页面）
+| 项目 | 原（两行） | 实施后（单行） |
+|---|---|---|
+| header 高 | 76px | **48px** |
+| body / scrollBody 起点 y | 76 | **48**（上移 28px） |
+| 标题 crumb | x=300 right=507 | 原位（x=300 right=507） |
+| 对话/轨迹 tabs | 下排 y=50 x=308 | **x=507（紧贴标题右缘）** y=22 |
+| 标准模式/后台任务 actions | x=517 | **x=639**（tabs 后 36px） |
+| 工具按钮 / 角落 | x=1273 / 1360 | 原位 |
+| `--enkeep-tabs-left` | — | **207px**（=507−280−20） |
+| `--enkeep-tabs-shift` | — | **122px**（tab 跨度 88 + 34） |
+
+### 9.3 踩坑与修正（2 处，均已修）
+1. **坐标基准（规划期已预见）**：视口坐标 ≠ 相对包含块坐标，直接赋值偏右 280px——已减 header.left。
+2. **padding box（实施期新踩）**：header `padding-left:20px`，CSS 绝对 `left` 相对 padding box，只减 header.left 仍偏 20px（tabs x=527、gap=20）——已再减 padding-left，最终 gap=0（标题右缘到 tab 容器，容器 padding-left:8px 即文字间隙）。
+3. **隐藏 tab 负 span**：轨迹 tab `display:none` 时零宽 rect 使跨度变负（shift=-481px、actions 跑到 x=36）——已过滤零宽 tab，隐藏后 shift=60px、actions 到 x=577。
+
+### 9.4 验收结果（全部通过）
+- 几何：header 48px、body y=48、tab 间隙 0（文字间隙 8px）、零重叠、无横向溢出。
+- 多状态：短标题 ✓ / 长标题动态跟随（crumb 507→893、left 207→593、tabs 紧随）✓ /
+  空白新会话（blank header 40px、无 lineage → 选择器不匹配、样式不生效、vars 清空、无报错）✓ /
+  轨迹 tab 隐藏（shift 自适应 122→60）✓。
+- 交互：tab 点击切换正常（active 态与 chatFlow 同步）、后台任务触发器浮层锚定跟随（x≈715 浮层在按钮 x=791 下方）、
+  无 JS 报错。**注**：点"标准模式" text label 不弹菜单是控件原生行为（对照实验：移除本样式后点击同样不弹），与本改动无关。
+- 既有功能回归：header 前缀 `.dsh: `+16px、上一条指令横条（y=730~764）、活动区 5 按钮、composer 输入框、提示词行位置均不变。
+- 约束：零新增依赖、零构建、未改官方代码/single slot、未写宽度变量、**未重启 dsh web**。
