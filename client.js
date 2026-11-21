@@ -86,29 +86,30 @@ window.__ModuleLoader__.load({
     const ACTIVITY_CSS = [
       '[data-enkeep-activity-bar]{',
       'position:absolute;top:calc(var(--dsh-frame-overlay-top, 0px) + 8px);',
-      'right:calc(var(--dsh-windows-sidebar-width, var(--dsh-sidebar-width, 260px)) + var(--dsh-sidebar-inline-padding, 12px) + 8px);',
+      // 浮动条固定在右侧一个常量位置：不再随侧栏展开/收起/隐藏而移动。
+      // 侧栏已回到左边（sb-01 卸载），旧的 right:sidebar宽 逻辑会让它横跳。
+      'right:calc(var(--dsh-sidebar-inline-padding, 12px) + 8px);',
       'width:380px;max-width:calc(100vw - 32px);z-index:40;',
       'display:flex;flex-direction:column;gap:4px;padding:8px;',
       'border:1px solid var(--dsw-alias-border-l3);border-radius:10px;',
       'background:color-mix(in srgb, var(--dsw-alias-bg-layer-2, #202124) 94%, #000);',
       'box-shadow:0 4px 20px rgba(0,0,0,.28);pointer-events:auto;',
       'opacity:1;}',
-      // 侧栏折叠时主侧栏列收缩为 56px 图标栏（cols.sidebar=56）；
-      // 不隐藏，改为贴着图标栏继续显示，保证“始终悬浮”。
-      '[data-sidebar-collapsed] [data-enkeep-activity-bar]{',
-      'right:calc(56px + var(--dsh-sidebar-inline-padding, 12px) + 8px);}',
+      // 侧栏折叠时浮动条位置保持不变：覆盖回与基础规则相同的固定 right 值，
+      // 确保原生折叠态的任何 right 声明都不会让它横跳。
+      '[data-sidebar-collapsed] [data-enkeep-activity-bar]{right:calc(var(--dsh-sidebar-inline-padding, 12px) + 8px);}',
       // Web 侧边栏"完全隐藏"：原生收起仍留 56px 图标栏，这里把 frame 的
-      // 第三列（侧栏列）强制压到 0。覆盖写在样式表 !important 规则里，不改写
-      // React 的 grid-template-columns 内联声明；重绘时由 observer 重算变量。
+      // 侧栏列强制压到 0。官方默认布局侧栏是第一列（sidebar|center|rightbar），
+      // 故 fallback 压第一列。覆盖写在样式表 !important 规则里，不改写 React
+      // 的 grid-template-columns 内联声明；重绘时由 observer 重算变量。
       // fallback 只是防「变量意外缺失导致整条声明失效」的兜底；正常流程下
-      // 变量一定先于标记写入，且解析失败时压根不打标记，故不会误伤右栏轨。
+      // 变量一定先于标记写入，且解析失败时压根不打标记，故不会误伤中列。
       '[data-enkeep-sidebar-hidden]{',
-      'grid-template-columns:var(--dsh-enkeep-grid-cols, minmax(0px, 0px) minmax(0px, 1fr) 0px)!important;}',
-      '[data-enkeep-sidebar-hidden] [data-enkeep-sidebar-col]{border-left-color:transparent!important;}',
+      'grid-template-columns:var(--dsh-enkeep-grid-cols, 0px minmax(0px, 1fr) minmax(0px, 0px))!important;}',
+      '[data-enkeep-sidebar-hidden] [data-enkeep-sidebar-col]{border-right-color:transparent!important;}',
       // 原生状态保持不动，侧栏拖拽手柄不会自行消失，这里用稳定钩子直接隐藏。
       '[data-enkeep-sidebar-hidden] [data-side="sidebar"]{display:none!important;}',
-      // 加 html 前缀把特异性提到 (0,3,0)，稳定压过 [data-sidebar-collapsed] 那条，
-      // 且不依赖原生折叠属性（原生状态在竞态下可能变化）。
+      // 隐藏时浮动条位置同样保持不变，与展开/收起一致。
       'html [data-enkeep-sidebar-hidden] [data-enkeep-activity-bar]{',
       'right:calc(var(--dsh-sidebar-inline-padding, 12px) + 8px);}',
       '[data-enkeep-activity-head]{display:flex;align-items:center;gap:6px;',
@@ -156,7 +157,7 @@ window.__ModuleLoader__.load({
       '[data-enkeep-row-action][data-enkeep-row-pin]{color:var(--dsw-alias-state-business-primary, #4c8bf5);}',
       // 五种标识：运行中(绿实心+脉冲环) / 等待互动(琥珀空心环,静态) /
       // 完成未看(橙实心+光环) / 完成已看(灰实心) /
-      // 当前对话(叠加高亮行 + “当前”徽标；当前通常也是运行中，故双重标识)。
+      // 当前对话(叠加高亮行背景色；当前通常也是运行中，故双重标识)。
       // 等待互动用空心环而非实心点，与同为琥珀色的「完成未看」在形状上区分，
       // 避免颜色混淆；且不带 animation——脉冲专属于真正在运行的 ongoing。
       '[data-enkeep-dot]{flex:0 0 auto;width:8px;height:8px;border-radius:50%;',
@@ -175,9 +176,6 @@ window.__ModuleLoader__.load({
       '[data-enkeep-dot="ongoing"]{animation:none;}}',
       '[data-enkeep-activity-item][data-enkeep-current]{',
       'background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 12%, transparent);}',
-      '[data-enkeep-current-badge]{flex:none;font-size:10px;line-height:14px;padding:0 5px;',
-      'border-radius:6px;color:var(--dsw-alias-state-business-primary, #4c8bf5);',
-      'border:1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 45%, transparent);}',
       '[data-enkeep-activity-label]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       // Confirm / rename dialogs (centred over the viewport, above the bar).
       '[data-enkeep-modal-mask]{position:fixed;inset:0;z-index:1000;',
@@ -213,6 +211,41 @@ window.__ModuleLoader__.load({
       style.dataset.plugin = 'dsh-enkeep'
       style.dataset.pluginCss = ACTIVITY_STYLE_ID
       style.textContent = ACTIVITY_CSS
+      document.head.appendChild(style)
+      return () => style.remove()
+    }
+
+    // --- Last user prompt bar (对话区顶部固定横条) ----------------------------
+    // 显示当前会话最后一条"用户自己发给 AI"的消息，回答很长、滚动很远之后
+    // 仍能一眼看到上次的要求。渲染在 shell.overlay 的 React 组件树里
+    // （与活动区同处一个 register entry，兄弟节点），绝不用 appendChild 注入
+    // 官方 React 子树——conversation.chat.flow 到 main.conversation 全是 React
+    // 管理的 DOM，注入进去会被重绘冲掉。MutationObserver 只读文本 / 写自身 state。
+    const LASTPROMPT_STYLE_ID = 'enkeep-lastprompt'
+    const LASTPROMPT_CSS = [
+      '[data-enkeep-lastprompt]{',
+      'position:absolute;z-index:39;box-sizing:border-box;pointer-events:none;', // 纯展示，不挡点击（活动区 z-index:40）
+      'display:flex;align-items:center;gap:10px;padding:7px 20px;min-height:36px;',
+      'border-bottom:1px solid var(--dsw-alias-border-l2);',
+      'background:color-mix(in srgb, var(--dsw-alias-bg-layer-1, #1e1f22) 94%, transparent);',
+      'backdrop-filter:blur(6px);font-size:13px;line-height:1.4;',
+      '}',
+      '[data-enkeep-lastprompt-label]{flex:none;opacity:.72;white-space:nowrap;',
+      'color:var(--dsw-alias-label-tertiary, #888);}',
+      '[data-enkeep-lastprompt-text]{',
+      'flex:1;min-width:0;color:var(--dsw-alias-label-primary, #ddd);',
+      'display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;',
+      'overflow:hidden;word-break:break-word;}',
+    ].join('\n')
+
+    function installLastPromptStyle() {
+      if (typeof document === 'undefined') return () => {}
+      const existing = document.querySelector(`style[data-plugin-css="${LASTPROMPT_STYLE_ID}"]`)
+      if (existing) return () => {}
+      const style = document.createElement('style')
+      style.dataset.plugin = 'dsh-enkeep'
+      style.dataset.pluginCss = LASTPROMPT_STYLE_ID
+      style.textContent = LASTPROMPT_CSS
       document.head.appendChild(style)
       return () => style.remove()
     }
@@ -271,22 +304,32 @@ window.__ModuleLoader__.load({
     }
 
     // --- Header title CSS -----------------------------------------------------
-    // Current-session "dir: title" appended to the conversation crumbs row via the
-    // official "conversation.session.header.actions" LIST slot (coexists with the
-    // agent-preset / jobs / subagent / agent-team entries already registered
-    // there). It deliberately does NOT touch "conversation.session.header.lineage":
-    // that slot is kind:"single", and @deepseek-ai/dsh-client-ui-subagent already
-    // owns it — a second registration at the same priority throws and kills the
-    // subagent entry at boot. All selectors are scoped to our own data hooks; no
-    // hash classes, no bare global selectors, no width-isolation variables.
+    // Prefix the NATIVE current-session title with the workspace dir ("dir: ")
+    // and enlarge it to 16px, keeping the native DSH title colour. No extra tag
+    // is added to the header.
+    // Target: the span immediately before the official lineage slot anchor in the
+    // crumbs. That is the native "current" crumb (verified in the live DOM: the
+    // anchor's previousElementSibling is span.wSkVaW_crumbCurrent). We key off the
+    // official slot anchor, NOT a hash class, and only single :has() (nested :has
+    // is invalid CSS). Subagent crumbs have a different structure and are not hit.
+    // The prefix string itself lives in --enkeep-dir-prefix, written by HeaderTitle
+    // as a quoted CSS string (content:var(...) needs a quoted value to render).
+    // We deliberately do NOT register the lineage slot: it is kind:"single" and
+    // @deepseek-ai/dsh-client-ui-subagent owns it — a second registration at the
+    // same priority throws and kills the subagent entry at boot. No width vars.
     const HEADER_STYLE_ID = 'enkeep-header'
+    const HDR_CRUMB = 'span:has(+ [data-slot="conversation.session.header.lineage"])'
     const HEADER_CSS = [
-      // Orange, slightly heavier than the native tertiary crumb label.
-      '[data-enkeep-header-title]{',
-      'color:var(--dsw-alias-state-warn-primary,#f59e0b);font-weight:600;',
-      'max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
-      'padding:4px 8px;border-radius:var(--dsw-radius-md,6px);',
-      'font-size:14px;line-height:20px;}',
+      // Enlarge the native current crumb while keeping its native colour/weight.
+      // The native crumb has max-width:220px + text-overflow:ellipsis, which
+      // truncates longer titles (and now the dir prefix too). The crumbs nav
+      // already has overflow:hidden + min-width:0 on the flex chain, so lifting
+      // the span cap won't break layout — it just stops hiding title text.
+      HDR_CRUMB + '{',
+      'font-size:16px;max-width:none;}',
+      // Insert the workspace-dir prefix right before the native title text.
+      HDR_CRUMB + '::before{',
+      'content:var(--enkeep-dir-prefix,"");}',
     ].join('\n')
 
     function installHeaderStyle() {
@@ -693,21 +736,27 @@ window.__ModuleLoader__.load({
       return null
     }
 
-    // Conversation header title, rendered in the official
-    // "conversation.session.header.actions" LIST slot (the right-hand band that
-    // shares the crumbs row). List slots are additive, so this never competes with
-    // the registrations other plugins already own there. Only standard session
-    // scope props are available here — there are no crumb owner props — so the
-    // label is derived from our own session row via useSessions(sessionId).
+    // Header prefix driver. Mounted via an (empty-render) actions-slot registration
+    // only to obtain reactive useSessions/sessionId; it writes the workspace-dir
+    // prefix into --enkeep-dir-prefix, which HEADER_CSS consumes to prefix the
+    // native current crumb. Renders nothing into the header itself (the crumb is
+    // restyled in place by CSS). Blank sessions clear the prefix.
+    // Known limit: the var is global, so with two split panes on DIFFERENT
+    // workspaces the last-mounted pane wins and both crumbs show one prefix.
+    // Same-workspace splits (the common case) are unaffected; a per-crumb fix
+    // would require imperative DOM writes on native nodes, so we keep this simple.
     function HeaderTitle({ useSessions, sessionId }) {
       const row = typeof useSessions === 'function'
         ? useSessions((s) => (sessionId === void 0 ? void 0 : (s && s.byId) ? s.byId[sessionId] : undefined))
         : void 0
-      // Nothing to label on a blank/new session — stay out of the header entirely.
-      if (!row || row.blank) return null
-      const label = sessionLabel(row, sessionId)
-      if (!label) return null
-      return h('span', { 'data-enkeep-header-title': true, title: label }, label)
+      const dir = (row && !row.blank) ? dirName(row.cwd) : ''
+      const prefix = dir ? dir + ': ' : ''
+      React.useEffect(() => {
+        if (typeof document === 'undefined') return
+        // content:var() needs a quoted CSS string; JSON.stringify handles escaping.
+        document.documentElement.style.setProperty('--enkeep-dir-prefix', JSON.stringify(prefix))
+      }, [prefix])
+      return null
     }
 
     // Above-composer dock: current-session plain label (left) + high-frequency
@@ -758,12 +807,19 @@ window.__ModuleLoader__.load({
       const bottom = typeof document !== 'undefined' && document.querySelector('[data-shell-bottom]')
       return bottom && bottom.parentElement ? bottom.parentElement : null
     }
-    // 把 frame 内联 grid-template-columns 的最后一个轨道（侧栏列）改成 0px。
+    // 把 frame 内联 grid-template-columns 的「侧栏列」改成 0px。
+    // 官方默认布局（sb-01 补丁已卸载）列顺序 = sidebar|center|rightbar，
+    // 侧栏是第一列，形如 "280px minmax(0px, 1fr) minmax(0px, 0px)"。
+    // 旧实现把「最后一段 px」当成侧栏——那是侧栏移右时的顺序；如今末段是
+    // minmax(0px, 0px)（带括号），正则匹配不到 → 返回 null → 按钮完全失效。
+    // 新版只压第一列（侧栏），并要求它是纯 px 宽度才动手，避免误伤轨道。
     // React 内联值始终是原生宽度，我们的覆盖在样式表里用 !important，互不污染。
     function sidebarGridWithZeroTrack(frame) {
       const gtc = frame && frame.style ? frame.style.gridTemplateColumns : ''
-      const m = String(gtc || '').match(/^(.*\s)(\S+px)\s*$/)
-      return m ? m[1] + '0px' : null
+      const tracks = String(gtc || '').trim().split(/\s+/)
+      if (!tracks.length || !/^\d+px$/.test(tracks[0])) return null
+      tracks[0] = '0px'
+      return tracks.join(' ')
     }
 
     // Enkeep-private pinned SessionId set (drives activity-bar pinned zone + lock).
@@ -779,6 +835,109 @@ window.__ModuleLoader__.load({
     }
     function writePinned(ids) {
       try { localStorage.setItem(ACTIVITY_PINNED_KEY, JSON.stringify(ids)) } catch (e) { /* ignore */ }
+    }
+
+    // Strip markdown / @mentions / slash-command prefixes down to readable plain
+    // text for the one-line prompt bar. Conservative on purpose: never parse or
+    // execute content, just remove the common wrappers and collapse whitespace.
+    function cleanPromptText(raw) {
+      let text = String(raw == null ? '' : raw).replace(/\r/g, '')
+      text = text.split('\n').map((line) => line.trim()).filter(Boolean).join(' ')
+      text = text.replace(/^[>#*+`\-]+\s*/, '')            // leading markdown markers
+      text = text.replace(/\*\*|__|`/g, '')                 // inline bold/code marks
+      text = text.replace(/@[^\s@#]+/g, '')                 // @mentions / @file refs
+      text = text.replace(/^\/[A-Za-z][\w-]*\s*/, '')       // leading /command
+      text = text.replace(/\s+/g, ' ').trim()
+      return text
+    }
+
+    // LastPromptBar: a fixed bar that hugs the TOP EDGE OF THE INPUT BOX showing
+    // the last user-sent message — the moment you need "what did I ask last" is
+    // exactly when you are about to type the next one. Rendered as a sibling of
+    // ActivityBar inside the same shell.overlay entry (overlay is click-through;
+    // this bar is pointer-events:none). A MutationObserver on <body> only READS
+    // the official DOM and writes this component's own state — never mutates
+    // React-owned nodes. Position is measured from the composer input box and
+    // anchored by its BOTTOM edge, so it hugs the input whether text wraps to 1
+    // or 2 lines. Re-measured on resize (and whenever the observer fires).
+    function LastPromptBar() {
+      const EMPTY = { text: '', visible: false, left: 0, bottom: 0, width: 0 }
+      const [state, setState] = React.useState(EMPTY)
+      const stateRef = React.useRef(state)
+      const rafRef = React.useRef(null)
+
+      React.useEffect(() => {
+        if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return () => {}
+        const measure = () => {
+          // The composer bar slot's first element (.uV2eYG_root) is the input
+          // card: its left/width are the stable anchor. The actual input box
+          // ([contenteditable]) gives the top edge we hug. Data-slot is stable;
+          // we never depend on the hash class name itself.
+          const barSlot = document.querySelector('[data-slot="conversation.composer.bar"]')
+          if (!barSlot) return null
+          const input = barSlot.querySelector('[contenteditable="true"]')
+          if (!input) return null
+          const card = barSlot.firstElementChild
+          const cr = card ? card.getBoundingClientRect() : input.getBoundingClientRect()
+          const ir = input.getBoundingClientRect()
+          // overlay layer spans the viewport; anchor by bottom so the bar's
+          // bottom edge meets the input's top edge regardless of bar height.
+          return { left: cr.left, bottom: Math.max(0, window.innerHeight - ir.top), width: cr.width }
+        }
+        const scan = () => {
+          const nodes = document.querySelectorAll('[data-slot="conversation.chat.flow"] [data-chat-flow-kind="user"]')
+          const last = nodes.length ? nodes[nodes.length - 1] : null
+          if (!last) {
+            if (stateRef.current.visible) { stateRef.current = EMPTY; setState(EMPTY) }
+            return
+          }
+          // The message node also carries UI chrome (a [data-clock] timestamp).
+          // Strip it from a detached clone so only the user's own words remain;
+          // never mutate the original React-owned node.
+          const clone = last.cloneNode(true)
+          clone.querySelectorAll('[data-clock]').forEach((n) => n.remove())
+          const text = cleanPromptText(clone.textContent || last.innerText || '')
+          const geom = measure() || { left: 0, bottom: 0, width: 0 }
+          const next = { text, visible: !!text, left: geom.left, bottom: geom.bottom, width: geom.width }
+          const prev = stateRef.current
+          if (prev.text !== next.text || prev.visible !== next.visible || prev.left !== next.left || prev.bottom !== next.bottom || prev.width !== next.width) {
+            stateRef.current = next
+            setState(next)
+          }
+        }
+        const schedule = () => {
+          if (rafRef.current != null) return
+          rafRef.current = requestAnimationFrame(() => { rafRef.current = null; scan() })
+        }
+        const observer = new MutationObserver((records) => {
+          // Ignore mutations caused by this bar itself (its own text/style writes)
+          // and by style injection into <head>, so the observer cannot self-trigger
+          // an infinite update loop.
+          const onlySelf = records.every((rec) => {
+            const target = rec.target
+            return (target && target.closest && target.closest('[data-enkeep-lastprompt]')) ||
+              (target && target.parentNode && target.parentNode.nodeName === 'HEAD')
+          })
+          if (!onlySelf) schedule()
+        })
+        observer.observe(document.body, { childList: true, subtree: true })
+        window.addEventListener('resize', schedule)
+        scan() // initial paint (if messages already in DOM)
+        return () => {
+          observer.disconnect()
+          window.removeEventListener('resize', schedule)
+          if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+        }
+      }, [])
+
+      if (!state.visible) return null
+      return h('div', {
+        'data-enkeep-lastprompt': '',
+        style: { left: state.left + 'px', bottom: state.bottom + 'px', width: state.width + 'px' },
+      },
+        h('span', { 'data-enkeep-lastprompt-label': '' }, '上一条指令'),
+        h('div', { 'data-enkeep-lastprompt-text': '' }, state.text)
+      )
     }
 
     function ActivityBar({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession, useSessions, useSessionStatus, useWorkspaces }) {
@@ -863,8 +1022,12 @@ window.__ModuleLoader__.load({
         const initial = sidebarGridWithZeroTrack(frame)
         if (!initial) return undefined
 
-        const bottom = frame.querySelector('[data-shell-bottom]')
-        const sidebarCol = bottom && bottom.previousElementSibling
+        // 定位真正的侧栏列：官方布局里它是 frame 的直接子元素、class 含
+        // "sidebarCol"（索引 0）。旧代码用 bottom.previousElementSibling，在
+        // sb-01「侧栏在右」时代侥幸正确；卸载后它指向 rightbarCol——标记打错
+        // 目标。改为按稳定语义查找，不依赖它在第几列。
+        const sidebarCol = [...frame.children].find(
+          (c) => typeof c.className === 'string' && c.className.includes('sidebarCol'))
         if (sidebarCol) sidebarCol.setAttribute('data-enkeep-sidebar-col', '')
 
         const sync = () => {
@@ -1064,6 +1227,14 @@ window.__ModuleLoader__.load({
             h('button', {
               type: 'button',
               'data-enkeep-activity-action': true,
+              onClick: onToggleSidebarHide,
+              title: sidebarHidden ? '显示侧边栏' : '隐藏侧边栏',
+              'aria-label': sidebarHidden ? '显示侧边栏' : '隐藏侧边栏',
+              'aria-pressed': sidebarHidden,
+            }, h(HeaderIcon, { kind: sidebarHidden ? 'sidebar-show' : 'sidebar-hide' })),
+            h('button', {
+              type: 'button',
+              'data-enkeep-activity-action': true,
               disabled: busy,
               title: '新建对话',
               'aria-label': '新建对话',
@@ -1091,15 +1262,7 @@ window.__ModuleLoader__.load({
               onClick: () => setCollapsed((v) => !v),
               title: collapsed ? '展开活动区' : '收起活动区',
               'aria-label': collapsed ? '展开活动区' : '收起活动区',
-            }, h(HeaderIcon, { kind: collapsed ? 'expand' : 'collapse' })),
-            h('button', {
-              type: 'button',
-              'data-enkeep-activity-action': true,
-              onClick: onToggleSidebarHide,
-              title: sidebarHidden ? '显示侧边栏' : '隐藏侧边栏',
-              'aria-label': sidebarHidden ? '显示侧边栏' : '隐藏侧边栏',
-              'aria-pressed': sidebarHidden,
-            }, h(HeaderIcon, { kind: sidebarHidden ? 'sidebar-show' : 'sidebar-hide' })))),
+            }, h(HeaderIcon, { kind: collapsed ? 'expand' : 'collapse' })))),
         !collapsed && items.map((it) =>
           h('div', {
             key: it.id,
@@ -1114,8 +1277,7 @@ window.__ModuleLoader__.load({
               onClick: () => openSession(it.id),
             },
               h('span', { 'data-enkeep-dot': it.state }),
-              h('span', { 'data-enkeep-activity-label': true }, it.label),
-              it.current ? h('span', { 'data-enkeep-current-badge': true }, '当前') : null),
+              h('span', { 'data-enkeep-activity-label': true }, it.label)),
             h('div', { 'data-enkeep-activity-row-actions': true },
               h('button', {
                 type: 'button',
@@ -2239,33 +2401,46 @@ window.__ModuleLoader__.load({
             id: 'dsh-enkeep.activity-bar',
             order: 100,
             inject: () => ({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession }),
-          }, (props) => h(ActivityBar, {
-            form: props.form,
-            openSession: props.openSession,
-            newSession: props.newSession,
-            addWorkspace: props.addWorkspace,
-            openSettings: props.openSettings,
-            pinSession: props.pinSession,
-            unpinSession: props.unpinSession,
-            archiveSession: props.archiveSession,
-            renameSession: props.renameSession,
-            useSessions: props.useSessions,
-            useSessionStatus: props.useSessionStatus,
-            useWorkspaces: props.useWorkspaces,
-          })))
+          }, (props) => h(React.Fragment, null,
+            h(ActivityBar, {
+              form: props.form,
+              openSession: props.openSession,
+              newSession: props.newSession,
+              addWorkspace: props.addWorkspace,
+              openSettings: props.openSettings,
+              pinSession: props.pinSession,
+              unpinSession: props.unpinSession,
+              archiveSession: props.archiveSession,
+              renameSession: props.renameSession,
+              useSessions: props.useSessions,
+              useSessionStatus: props.useSessionStatus,
+              useWorkspaces: props.useWorkspaces,
+            }),
+            h(LastPromptBar)
+          )))
           return () => { stopOverlay(); stopStyle() }
         }, 'enkeep: activity bar')
 
-        // (3b) Conversation header title: append our orange "dir: title" to the
-        // header actions band via the official LIST slot
-        // "conversation.session.header.actions". A list slot is additive, so our
-        // entry coexists with everything already registered there.
+        // (3a) Last user prompt bar: idempotent style install + dispose. The bar
+        // DOM itself is a React component rendered inside the activity bar's
+        // shell.overlay entry (a sibling), so it is never clobbered by official
+        // message-list re-renders. Observer + text extraction live in the
+        // component; this effect only owns the stylesheet lifecycle.
+        ctx.effect(() => {
+          const stopStyle = installLastPromptStyle()
+          return () => { stopStyle() }
+        }, 'enkeep: last prompt bar')
+
+        // (3b) Header title: prefix the NATIVE current crumb with the workspace
+        // dir and enlarge it in place (done by HEADER_CSS). We register an
+        // empty-render driver in the additive LIST slot
+        // "conversation.session.header.actions" purely to get reactive session
+        // data for the prefix string — it adds no visible entry to the header.
         // NOTE: never use "conversation.session.header.lineage" — it is
         // kind:"single", is already registered by
         // @deepseek-ai/dsh-client-ui-subagent, and a second registration at the
         // same priority throws, which fails that entry at web boot
-        // ("1 entry did not activate"). Style is installed idempotently and
-        // disposed together with the registration.
+        // ("1 entry did not activate"). Style/disposer are idempotent.
         ctx.effect(() => {
           const stopStyle = installHeaderStyle()
           const stopHeader = ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
@@ -2277,7 +2452,13 @@ window.__ModuleLoader__.load({
             useSessions: props.useSessions,
             sessionId: props.sessionId,
           })))
-          return () => { stopHeader(); stopStyle() }
+          return () => {
+            stopHeader()
+            stopStyle()
+            if (typeof document !== 'undefined') {
+              document.documentElement.style.removeProperty('--enkeep-dir-prefix')
+            }
+          }
         }, 'enkeep: header title')
 
         // (4) Settings page entry with toggles + activity window input.
