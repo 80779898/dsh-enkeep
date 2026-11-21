@@ -38,8 +38,8 @@ client.js  window.__ModuleLoader__.load({ id:'dsh-enkeep', factory })
        conversation.composer.dock / conversation.input.right /
        settings.section / main / sidebar.panellist / plugins.detail.actions
 数据源（只读官方 React hooks / DOM，无自定义 RPC）：
-  useSessions (byId: cwd/title/displayTitle/pendingInteraction/retainedBy.mainView/origin/blank)
-  useSessionStatus (running/completionUnread) · useWorkspaces · useInput(draft) · inputActions
+  useSessions (byId: cwd/title/displayTitle/origin/blank/retainedBy.mainView/updatedAt)
+  useSessionStatus (running/completionUnread/pendingInteraction) · useWorkspaces · useInput(draft) · inputActions
   DOM: [data-chat-flow-kind="user"] / [data-clock] / [data-slot=...] / [role=tablist] 等
 状态：Host 的易失 Config，经 ctx.configForms.get('enkeep')（无状态文件）。
 ```
@@ -245,7 +245,7 @@ client.js  window.__ModuleLoader__.load({ id:'dsh-enkeep', factory })
 | 官方 CSS 变量（读） | `--dsh-conversation-column-width` / `--dsh-chat-content-width` / `--dsh-composer-card-max-width` / `--dsh-frame-overlay-top` / `--dsh-sidebar-inline-padding` / `--dsw-radius-lg` | 1/2/7 |
 | 自有 CSS 变量（写） | `--enkeep-dir-prefix` / `--enkeep-tabs-left` / `--enkeep-tabs-shift` / `--dsh-enkeep-grid-cols` / `--enkeep-gp-top-h` | 4/5/3/9 |
 | slot 名 | `shell.overlay` / `conversation.input.dock` / `conversation.session.header.actions` / `conversation.composer.dock` / `conversation.input.right` / `settings.section` / `main` / `sidebar.panellist` / `plugins.detail.actions` | 全部 |
-| 官方状态字段 | `byId[].cwd/title/displayTitle/origin/blank/retainedBy.mainView` / `running` / `completionUnread` / `pendingInteraction` | 2/4 |
+| 官方状态字段 | `useSessions.byId[]`: `cwd/title/displayTitle/origin/blank/updatedAt/retainedBy.mainView`；`useSessionStatus`: `running/completionUnread/pendingInteraction` | 2/4 |
 | host 路由 | `/dsh-enkeep-skills` + header `x-dsh-enkeep-skills`（在 index.js，本轮未改） | 8 |
 
 ---
