@@ -233,8 +233,9 @@ client.js（唯一改动文件）
   取消 rAF、清变量。**只读官方 DOM，不写 React 节点**。
 - 新增 `COMPACT_HEADER_STYLE_ID = 'enkeep-header-compact'` + `installCompactHeaderStyle()`：
   `header:has([data-slot=...lineage]){position:relative;height:48px;min-height:48px}`、
-  `tablist{position:absolute;top:12px;left:var(--enkeep-tabs-left,227px);z-index:5}`、
-  `headerActions{margin-left:var(--enkeep-tabs-shift,122px)}`——全部限定在会话 header 内。
+  `tablist{position:absolute;top:12px;left:var(--enkeep-tabs-left,235px);z-index:5}`、
+  `headerActions{margin-left:var(--enkeep-tabs-shift,150px)}`——全部限定在会话 header 内。
+  （fallback 值随 9.5 间距调整同步更新。）
 - header effect 安装/注销 compact 样式，disposer 一并清 `--enkeep-dir-prefix` / `--enkeep-tabs-left` / `--enkeep-tabs-shift`。
 
 ### 9.2 实测几何（1400×900，真实页面）
@@ -243,23 +244,31 @@ client.js（唯一改动文件）
 | header 高 | 76px | **48px** |
 | body / scrollBody 起点 y | 76 | **48**（上移 28px） |
 | 标题 crumb | x=300 right=507 | 原位（x=300 right=507） |
-| 对话/轨迹 tabs | 下排 y=50 x=308 | **x=507（紧贴标题右缘）** y=22 |
-| 标准模式/后台任务 actions | x=517 | **x=639**（tabs 后 36px） |
+| 对话/轨迹 tabs | 下排 y=50 x=308 | **x=535（标题右缘后 36px）** y=22 |
+| 标准模式/后台任务 actions | x=517 | **x=667**（tabs 后 36px） |
 | 工具按钮 / 角落 | x=1273 / 1360 | 原位 |
-| `--enkeep-tabs-left` | — | **207px**（=507−280−20） |
-| `--enkeep-tabs-shift` | — | **122px**（tab 跨度 88 + 34） |
+| `--enkeep-tabs-left` | — | **235px**（=507−280−20+28，见 9.5） |
+| `--enkeep-tabs-shift` | — | **150px**（tab 跨度 88 + 34 + 28） |
 
 ### 9.3 踩坑与修正（2 处，均已修）
 1. **坐标基准（规划期已预见）**：视口坐标 ≠ 相对包含块坐标，直接赋值偏右 280px——已减 header.left。
 2. **padding box（实施期新踩）**：header `padding-left:20px`，CSS 绝对 `left` 相对 padding box，只减 header.left 仍偏 20px（tabs x=527、gap=20）——已再减 padding-left，最终 gap=0（标题右缘到 tab 容器，容器 padding-left:8px 即文字间隙）。
-3. **隐藏 tab 负 span**：轨迹 tab `display:none` 时零宽 rect 使跨度变负（shift=-481px、actions 跑到 x=36）——已过滤零宽 tab，隐藏后 shift=60px、actions 到 x=577。
+3. **隐藏 tab 负 span**：轨迹 tab `display:none` 时零宽 rect 使跨度变负（shift=-481px、actions 跑到 x=36）——已过滤零宽 tab，隐藏后 shift=90px、actions 到 x=605（自适应，间距恒定）。
+4. **间距不协调（用户反馈）**：初版标题→对话仅 8px（tab 容器 padding-left），而对话→轨迹是官方 36px——已读取 `columnGap`(36) 与 `tabPadLeft`(8) 算 `lead=28`，left/shift 各 +28px，三处间距统一为 36px（见 9.5）。
 
 ### 9.4 验收结果（全部通过）
-- 几何：header 48px、body y=48、tab 间隙 0（文字间隙 8px）、零重叠、无横向溢出。
-- 多状态：短标题 ✓ / 长标题动态跟随（crumb 507→893、left 207→593、tabs 紧随）✓ /
+- 几何：header 48px、body y=48、三处间距统一 36px（见 9.5）、零重叠、无横向溢出。
+- 多状态：短标题 ✓ / 长标题动态跟随 ✓ /
   空白新会话（blank header 40px、无 lineage → 选择器不匹配、样式不生效、vars 清空、无报错）✓ /
-  轨迹 tab 隐藏（shift 自适应 122→60）✓。
+  轨迹 tab 隐藏（shift 自适应，间距恒定）✓。
 - 交互：tab 点击切换正常（active 态与 chatFlow 同步）、后台任务触发器浮层锚定跟随（x≈715 浮层在按钮 x=791 下方）、
   无 JS 报错。**注**：点"标准模式" text label 不弹菜单是控件原生行为（对照实验：移除本样式后点击同样不弹），与本改动无关。
 - 既有功能回归：header 前缀 `.dsh: `+16px、上一条指令横条（y=730~764）、活动区 5 按钮、composer 输入框、提示词行位置均不变。
 - 约束：零新增依赖、零构建、未改官方代码/single slot、未写宽度变量、**未重启 dsh web**。
+
+### 9.5 间距对齐（用户反馈，2026-11-21）
+- **问题**：初版标题→对话只有 8px（tab 容器 `padding-left`），而对话→轨迹是官方 `column-gap:36px`，不协调。
+- **改法**：测量时读 `getComputedStyle(tabs).columnGap`(36) 与 `paddingLeft`(8)，`lead = max(0, 36−8) = 28`；
+  `left` 与 `shift` 各 `+lead`。不硬编码 28——跟随官方 gap 动态变化。
+- **实测（1400×900）**：标题 crumb right=507 → 对话 x=543（**36px**）、对话 right=569 → 轨迹 x=605（**36px**）、
+  轨迹 right=631 → actions x=667（**36px**）；变量 left=235px、shift=150px。三处间距统一为 36px。

@@ -835,10 +835,16 @@ window.__ModuleLoader__.load({
           // whose left = header border-box left + padding-left. Subtract both —
           // using only header.left leaves the strip padding-left (20px) too far right.
           const headerPad = parseFloat(getComputedStyle(header).paddingLeft) || 0
-          const left = Math.round(crumb.getBoundingClientRect().right - header.getBoundingClientRect().left - headerPad)
-          // Content span is stable whether tabs are block-level or absolute;
-          // +34px is a small breathing gap before the actions band.
-          const shift = Math.round(last.right - first.left) + 34
+          // Match the title→tab gap to the official inter-tab gap (column-gap,
+          // normally 36px). tabs' own padding-left already contributes 8px, so
+          // add (gap - tabPadLeft) to shift the strip right by the remainder.
+          const tabPad = parseFloat(getComputedStyle(tabs).paddingLeft) || 0
+          const gap = parseFloat(getComputedStyle(tabs).columnGap) || 36
+          const lead = Math.max(0, gap - tabPad)
+          const left = Math.round(crumb.getBoundingClientRect().right - header.getBoundingClientRect().left - headerPad + lead)
+          // Span is stable whether tabs are block/absolute; push actions by the
+          // same lead so tabs→actions keeps the same breathing room as title→tab.
+          const shift = Math.round(last.right - first.left) + 34 + lead
           root.style.setProperty('--enkeep-tabs-left', left + 'px')
           root.style.setProperty('--enkeep-tabs-shift', shift + 'px')
         }
