@@ -215,27 +215,42 @@ window.__ModuleLoader__.load({
       return () => style.remove()
     }
 
-    // --- Last user prompt bar (对话区顶部固定横条) ----------------------------
+    // --- Last user prompt bar (输入框上方、input.dock 文档流内) --------------
     // 显示当前会话最后一条"用户自己发给 AI"的消息，回答很长、滚动很远之后
-    // 仍能一眼看到上次的要求。渲染在 shell.overlay 的 React 组件树里
-    // （与活动区同处一个 register entry，兄弟节点），绝不用 appendChild 注入
-    // 官方 React 子树——conversation.chat.flow 到 main.conversation 全是 React
-    // 管理的 DOM，注入进去会被重绘冲掉。MutationObserver 只读文本 / 写自身 state。
+    // 仍能一眼看到上次的要求。形式完全参照 git 分支 chip：注册为
+    // conversation.input.dock 的 additive list slot 条目，走正常文档流，
+    // 与 git chip / 任务条由官方布局依次排列，永不重叠；宽度对齐 composer
+    // 卡片（max-width: var(--dsh-composer-card-max-width) + margin:auto）。
+    // MutationObserver 只读官方 DOM 文本、写自身 React state。
     const LASTPROMPT_STYLE_ID = 'enkeep-lastprompt'
     const LASTPROMPT_CSS = [
+      // Wrapper occupies the slot's normal flow, left-aligned and centered like
+      // .dsh-gpc (git chip). Width matches the composer input card.
       '[data-enkeep-lastprompt]{',
-      'position:absolute;z-index:39;box-sizing:border-box;pointer-events:none;', // 纯展示，不挡点击（活动区 z-index:40）
-      'display:flex;align-items:center;gap:10px;padding:7px 20px;min-height:36px;',
-      'border-bottom:1px solid var(--dsw-alias-border-l2);',
-      'background:color-mix(in srgb, var(--dsw-alias-bg-layer-1, #1e1f22) 94%, transparent);',
-      'backdrop-filter:blur(6px);font-size:13px;line-height:1.4;',
+      'position:relative;display:flex;justify-content:flex-start;',
+      'box-sizing:border-box;width:100%;max-width:var(--dsh-composer-card-max-width, 800px);',
+      'margin:0 auto;padding:0 0 4px;pointer-events:auto;',
       '}',
+      '[data-enkeep-lastprompt-inner]{',
+      'display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;',
+      'padding:6px 12px;min-height:34px;border-radius:8px;',
+      'border:1px solid var(--dsw-alias-border-l3);',
+      'background:var(--dsw-alias-bg-layer-2, #2a2b2e);',
+      'font-size:12px;line-height:1.4;}',
       '[data-enkeep-lastprompt-label]{flex:none;opacity:.72;white-space:nowrap;',
       'color:var(--dsw-alias-label-tertiary, #888);}',
       '[data-enkeep-lastprompt-text]{',
       'flex:1;min-width:0;color:var(--dsw-alias-label-primary, #ddd);',
       'display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;',
       'overflow:hidden;word-break:break-word;}',
+      // Copy button: hidden until the bar is hovered; copies the plain text.
+      '[data-enkeep-lastprompt-copy]{flex:none;display:none;align-items:center;gap:4px;',
+      'padding:3px 8px;border:1px solid var(--dsw-alias-border-l3);border-radius:5px;',
+      'background:var(--dsw-alias-bg-layer-1, #202124);color:var(--dsw-alias-label-secondary, #bbb);',
+      'font-size:12px;line-height:1;cursor:pointer;white-space:nowrap;}',
+      '[data-enkeep-lastprompt]:hover [data-enkeep-lastprompt-copy]{display:inline-flex;}',
+      '[data-enkeep-lastprompt-copy]:hover{color:var(--dsw-alias-label-primary, #eee);',
+      'border-color:var(--dsw-alias-border-l2);}',
     ].join('\n')
 
     function installLastPromptStyle() {
@@ -851,92 +866,104 @@ window.__ModuleLoader__.load({
       return text
     }
 
-    // LastPromptBar: a fixed bar that hugs the TOP EDGE OF THE INPUT BOX showing
-    // the last user-sent message — the moment you need "what did I ask last" is
-    // exactly when you are about to type the next one. Rendered as a sibling of
-    // ActivityBar inside the same shell.overlay entry (overlay is click-through;
-    // this bar is pointer-events:none). A MutationObserver on <body> only READS
-    // the official DOM and writes this component's own state — never mutates
-    // React-owned nodes. Position is measured from the composer input box and
-    // anchored by its BOTTOM edge, so it hugs the input whether text wraps to 1
-    // or 2 lines. Re-measured on resize (and whenever the observer fires).
-    function LastPromptBar() {
-      const EMPTY = { text: '', visible: false, left: 0, bottom: 0, width: 0 }
-      const [state, setState] = React.useState(EMPTY)
-      const stateRef = React.useRef(state)
+    // LastPromptDockBar: a full-width row in the conversation.input.dock LIST
+    // slot (same additive slot as the git branch chip and task progress bar),
+    // so the official layout stacks us in normal document flow — no absolute
+    // positioning, never overlapping other plugins. Width/centering matches the
+    // composer card via CSS. A MutationObserver on <body> only READS the official
+    // DOM text into this component's own state; it never mutates React nodes.
+    function LastPromptDockBar() {
+      const [text, setText] = React.useState('')
+      const textRef = React.useRef('')
       const rafRef = React.useRef(null)
 
       React.useEffect(() => {
         if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return () => {}
-        const measure = () => {
-          // The composer bar slot's first element (.uV2eYG_root) is the input
-          // card: its left/width are the stable anchor. The actual input box
-          // ([contenteditable]) gives the top edge we hug. Data-slot is stable;
-          // we never depend on the hash class name itself.
-          const barSlot = document.querySelector('[data-slot="conversation.composer.bar"]')
-          if (!barSlot) return null
-          const input = barSlot.querySelector('[contenteditable="true"]')
-          if (!input) return null
-          const card = barSlot.firstElementChild
-          const cr = card ? card.getBoundingClientRect() : input.getBoundingClientRect()
-          const ir = input.getBoundingClientRect()
-          // overlay layer spans the viewport; anchor by bottom so the bar's
-          // bottom edge meets the input's top edge regardless of bar height.
-          return { left: cr.left, bottom: Math.max(0, window.innerHeight - ir.top), width: cr.width }
-        }
         const scan = () => {
           const nodes = document.querySelectorAll('[data-slot="conversation.chat.flow"] [data-chat-flow-kind="user"]')
           const last = nodes.length ? nodes[nodes.length - 1] : null
-          if (!last) {
-            if (stateRef.current.visible) { stateRef.current = EMPTY; setState(EMPTY) }
-            return
+          let next = ''
+          if (last) {
+            // Strip the UI chrome ([data-clock] timestamp) from a detached clone;
+            // never mutate the original React-owned node.
+            const clone = last.cloneNode(true)
+            clone.querySelectorAll('[data-clock]').forEach((n) => n.remove())
+            next = cleanPromptText(clone.textContent || last.innerText || '')
           }
-          // The message node also carries UI chrome (a [data-clock] timestamp).
-          // Strip it from a detached clone so only the user's own words remain;
-          // never mutate the original React-owned node.
-          const clone = last.cloneNode(true)
-          clone.querySelectorAll('[data-clock]').forEach((n) => n.remove())
-          const text = cleanPromptText(clone.textContent || last.innerText || '')
-          const geom = measure() || { left: 0, bottom: 0, width: 0 }
-          const next = { text, visible: !!text, left: geom.left, bottom: geom.bottom, width: geom.width }
-          const prev = stateRef.current
-          if (prev.text !== next.text || prev.visible !== next.visible || prev.left !== next.left || prev.bottom !== next.bottom || prev.width !== next.width) {
-            stateRef.current = next
-            setState(next)
-          }
+          if (next !== textRef.current) { textRef.current = next; setText(next) }
         }
         const schedule = () => {
           if (rafRef.current != null) return
           rafRef.current = requestAnimationFrame(() => { rafRef.current = null; scan() })
         }
         const observer = new MutationObserver((records) => {
-          // Ignore mutations caused by this bar itself (its own text/style writes)
-          // and by style injection into <head>, so the observer cannot self-trigger
-          // an infinite update loop.
+          // Ignore our own text/style writes (and <head> style injection) so the
+          // observer cannot self-trigger an update loop.
           const onlySelf = records.every((rec) => {
-            const target = rec.target
-            return (target && target.closest && target.closest('[data-enkeep-lastprompt]')) ||
-              (target && target.parentNode && target.parentNode.nodeName === 'HEAD')
+            const t = rec.target
+            return (t && t.closest && t.closest('[data-enkeep-lastprompt]')) ||
+              (t && t.parentNode && t.parentNode.nodeName === 'HEAD')
           })
           if (!onlySelf) schedule()
         })
         observer.observe(document.body, { childList: true, subtree: true })
-        window.addEventListener('resize', schedule)
-        scan() // initial paint (if messages already in DOM)
+        scan() // initial paint
         return () => {
           observer.disconnect()
-          window.removeEventListener('resize', schedule)
           if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
         }
       }, [])
 
-      if (!state.visible) return null
-      return h('div', {
-        'data-enkeep-lastprompt': '',
-        style: { left: state.left + 'px', bottom: state.bottom + 'px', width: state.width + 'px' },
-      },
-        h('span', { 'data-enkeep-lastprompt-label': '' }, '上一条指令'),
-        h('div', { 'data-enkeep-lastprompt-text': '' }, state.text)
+      if (!text) return null // blank session: render nothing, leave no gap
+      const copy = (e) => {
+        if (e && typeof e.stopPropagation === 'function') e.stopPropagation()
+        const value = textRef.current
+        // Capture the button synchronously: React nulls out synthetic event
+        // fields (currentTarget) before async callbacks (.then / setTimeout) run.
+        const btn = e && e.currentTarget
+        let settled = false
+        const done = () => {
+          if (settled) return
+          settled = true
+          if (!btn) return
+          const old = btn.textContent
+          btn.textContent = '已复制'
+          if (typeof setTimeout === 'function') setTimeout(() => { btn.textContent = old }, 1200)
+        }
+        // Legacy fallback (execCommand) covers contexts where the async Clipboard
+        // API is blocked or its promise never settles (e.g. headless browsers).
+        const fallback = () => {
+          if (settled) return
+          try {
+            const ta = document.createElement('textarea')
+            ta.value = value
+            ta.setAttribute('readonly', '')
+            ta.style.cssText = 'position:fixed;left:-9999px;top:0;'
+            document.body.appendChild(ta)
+            ta.select()
+            const ok = document.execCommand && document.execCommand('copy')
+            ta.remove()
+            if (ok) done()
+          } catch (err) { settled = true /* give up silently */ }
+        }
+        try {
+          if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value).then(done, fallback)
+            if (typeof setTimeout === 'function') setTimeout(fallback, 600)
+          } else fallback()
+        } catch (err) { fallback() }
+      }
+      return h('div', { 'data-enkeep-lastprompt': '' },
+        h('div', { 'data-enkeep-lastprompt-inner': '' },
+          h('span', { 'data-enkeep-lastprompt-label': '' }, '上一条指令'),
+          h('div', { 'data-enkeep-lastprompt-text': '' }, text),
+          h('button', {
+            'data-enkeep-lastprompt-copy': '',
+            type: 'button',
+            title: '复制上一条指令',
+            onClick: copy,
+          }, '复制')
+        )
       )
     }
 
@@ -2401,24 +2428,29 @@ window.__ModuleLoader__.load({
             id: 'dsh-enkeep.activity-bar',
             order: 100,
             inject: () => ({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession }),
-          }, (props) => h(React.Fragment, null,
-            h(ActivityBar, {
-              form: props.form,
-              openSession: props.openSession,
-              newSession: props.newSession,
-              addWorkspace: props.addWorkspace,
-              openSettings: props.openSettings,
-              pinSession: props.pinSession,
-              unpinSession: props.unpinSession,
-              archiveSession: props.archiveSession,
-              renameSession: props.renameSession,
-              useSessions: props.useSessions,
-              useSessionStatus: props.useSessionStatus,
-              useWorkspaces: props.useWorkspaces,
-            }),
-            h(LastPromptBar)
-          )))
-          return () => { stopOverlay(); stopStyle() }
+          }, (props) => h(ActivityBar, {
+            form: props.form,
+            openSession: props.openSession,
+            newSession: props.newSession,
+            addWorkspace: props.addWorkspace,
+            openSettings: props.openSettings,
+            pinSession: props.pinSession,
+            unpinSession: props.unpinSession,
+            archiveSession: props.archiveSession,
+            renameSession: props.renameSession,
+            useSessions: props.useSessions,
+            useSessionStatus: props.useSessionStatus,
+            useWorkspaces: props.useWorkspaces,
+          })))
+          // Last-prompt bar: register as an additive LIST entry in the same
+          // conversation.input.dock slot the git chip + task bar use, so the
+          // official layout stacks us in normal flow (never overlapping).
+          const stopDock = ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+            name: 'conversation.input.dock',
+            id: 'enkeep-last-prompt',
+            order: 200, // after git chip (100) / task bar → closest to input
+          }, () => h(LastPromptDockBar)))
+          return () => { stopOverlay(); stopDock(); stopStyle() }
         }, 'enkeep: activity bar')
 
         // (3a) Last user prompt bar: idempotent style install + dispose. The bar
