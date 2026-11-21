@@ -66,14 +66,20 @@
 - 标题 / actions / utilities / corner 结构与宽度保持正常，无横向溢出 ✓
 - **原型局限**：`left:225px` / `margin-left:130px` 是固定值——标题变长会被压、轨迹 tab 隐藏时后推量不自适应。
   正式实现必须改为**动态测量 + CSS 变量驱动**。
+- **⚠️ 坐标基准（实测，务必遵守）**：`getBoundingClientRect().right` 是**视口坐标**，而 tabs 绝对定位的包含块是
+  `.wSkVaW_root`（`position:relative`，left=280），CSS `left` 是**相对包含块坐标**。实测：crumb 右边缘视口值
+  =507.25，直接赋给 `left` → tabs 实际 x=787.25（偏右 280px）；必须减去包含块 left（507.25−280=227.25）才得到
+  正确的 x=507.25。因此测量写入变量前须做转换：`left = crumb.getBoundingClientRect().right - containingBlock.getBoundingClientRect().left`
+  （推荐在测量时读取 tabs 的 `offsetParent` 的 left，或给 header 显式设 `position:relative` 后读取 header 的 left）。
 
 ### 2.5 风险（如实记录）
 1. **动态位置**：标题长度随会话名/目录变化，tabs 落点必须实时跟随；固定像素会压字。
-2. **tab 数量变化**：轨迹 tab 显隐导致 tabs 宽度变化，后推量要自适应。
-3. **交互控件**：tabs 是 `role=tab` 交互元素；actions 里"标准模式"是下拉、"后台任务"是可点触发器——位移后点击命中与浮层锚点要验证。
-4. **哈希类名**：`wSkVaW_*` 是构建生成的，升级可能变；用 `[role="tablist"]` 和 `[class*="headerActions"]` 等语义/片段选择器缓解。
-5. **CSS 变量时机**：测量须在 DOM 渲染后（`useLayoutEffect` + `requestAnimationFrame`），标题异步变化用 `ResizeObserver` 兜底。
-6. **不重启约束**：只改 `client.js`，用户手动刷新生效；不碰 web 进程。
+2. **坐标基准**：视口坐标 ≠ 相对包含块坐标，测量后须减去包含块 left（§2.4 有实测数据），否则 tabs 偏右 280px。
+3. **tab 数量变化**：轨迹 tab 显隐导致 tabs 宽度变化，后推量要自适应。
+4. **交互控件**：tabs 是 `role=tab` 交互元素；actions 里"标准模式"是下拉、"后台任务"是可点触发器——位移后点击命中与浮层锚点要验证。
+5. **哈希类名**：`wSkVaW_*` 是构建生成的，升级可能变；用 `[role="tablist"]` 和 `[class*="headerActions"]` 等语义/片段选择器缓解。
+6. **CSS 变量时机**：测量须在 DOM 渲染后（`useLayoutEffect` + `requestAnimationFrame`），标题异步变化用 `ResizeObserver` 兜底。
+7. **不重启约束**：只改 `client.js`，用户手动刷新生效；不碰 web 进程。
 
 ---
 
@@ -83,7 +89,7 @@
 client.js（唯一改动文件）
  ├─ 扩展 HeaderTitle（仍空渲染，复用 actions-slot 拿 useSessions/sessionId）：
  │    useLayoutEffect + requestAnimationFrame + ResizeObserver 监听 crumb 尺寸，
- │    测量标题 crumb 的 getBoundingClientRect().right → 写 --enkeep-tabs-left（px）
+ │    测量 crumb 右边缘 − 包含块 left（坐标转换，见 §2.4）→ 写 --enkeep-tabs-left（px）
  │    测量 [role="tablist"] 宽度        → 写 --enkeep-tabs-shift（px，含间距）
  │    disposer 断开 observer + removeProperty。
  ├─ 新增 installCompactHeaderStyle()：style[data-plugin-css="enkeep-header-compact"]
@@ -110,6 +116,9 @@ client.js（唯一改动文件）
 **技术**
 - 扩展现有 `HeaderTitle`（保持空渲染、仍挂在 `conversation.session.header.actions` list slot）。
 - `useLayoutEffect` 内 `requestAnimationFrame` 测量；`ResizeObserver` 监听 crumb 与 tablist 尺寸变化。
+- **坐标转换**：`--enkeep-tabs-left` 必须用 `crumb.getBoundingClientRect().right - tabs.offsetParent.getBoundingClientRect().left`
+  （相对包含块，见 §2.4），不能直接用视口坐标，否则 tabs 偏右 280px；配合步骤二给 header 设
+  `position:relative` 时，tabs 的 `offsetParent` 即 header，基准与 §2.4 一致。
 - 写 `--enkeep-tabs-left` / `--enkeep-tabs-shift` 到 `document.documentElement.style`（`setProperty`，值带 `px`）。
 - 返回 disposer：断开 observer、取消 pending rAF、`removeProperty`。
 
@@ -117,7 +126,7 @@ client.js（唯一改动文件）
 - 切换会话、标题变化、轨迹 tab 显隐时，两个变量随之更新；无内存泄漏。
 
 **验收标准**
-- 静态：有 rAF/observer 且 disposer 完整断开；变量值为合法 px 字符串；不写任何 `--dsh-*` 宽度变量。
+- 静态：有 rAF/observer 且 disposer 完整断开；变量值为合法 px 字符串；`--enkeep-tabs-left` 计算含「减去包含块 left」（非裸视口坐标）；不写任何 `--dsh-*` 宽度变量。
 - 动态（真实页面）：新会话（无标题）→ 变量指向 crumb 右边缘；有标题（含前缀）→ 指向标题后；隐藏轨迹 tab → shift 变量变小。
 - 切会话后变量更新无可见延迟（≤1 帧）；刷新页面无残留旧变量报错。
 
