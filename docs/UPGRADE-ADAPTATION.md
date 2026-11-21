@@ -84,8 +84,9 @@ client.js  window.__ModuleLoader__.load({ id:'dsh-enkeep', factory })
 - **改在哪**：`ACTIVITY_CSS`/`installActivityStyle`（82–205 行）+ `ActivityBar` 组件 + `shell.overlay` slot 注册（约 2531 行）。
 - **目的/效果**：右侧固定位置（right≈1380）常驻显示"最近/运行中/未读"会话，点条目切会话；5 个头部按钮；圆点五态（运行中绿脉冲/等待互动琥珀空心环/完成未读橙/完成已读灰/当前高亮）；支持置顶、重命名、归档、拖拽。
 - **做法**：`shell.overlay` 是 click-through，根元素显式 `pointer-events`；定位用 `--dsh-frame-overlay-top`、`--dsh-sidebar-inline-padding`（只读），固定在常量 right，不随侧栏展开/折叠/隐藏横跳。头部按钮统一 22×22 盒/15px SVG。
-- **数据源（升级重点）**：`useSessions(s=>s)` 的 `byId`（`cwd`/`title`/`displayTitle`/`origin`/`blank`/`retainedBy.mainView`）、`useSessionStatus(s=>s)` 的 `running`/`completionUnread`/`pendingInteraction`。
-- **失效症状**：条不显示 / 位置错乱 / 圆点状态不对 / 点击无效。
+- **数据源（升级重点）**：`useSessions(s=>s)` 的 `byId`（`cwd`/`title`/`displayTitle`/`origin`/`blank`/`updatedAt`/`retainedBy.mainView`）、`useSessionStatus(s=>s)` 的 `running`/`completionUnread`/`pendingInteraction`。
+- **条数上限（可配置）**：`activityItemLimit`（index.js schema 默认 20、1~200、volatile；设置页「活动区」number 输入；`selectActivity` 末参 + `clampItemLimit` 钳制）。**筛选按活动时间窗、排序按 SessionId 字典序、置顶优先**——三点保持现状，升级时不要改成"最近更新优先"。
+- **失效症状**：条不显示 / 位置错乱 / 圆点状态不对 / 点击无效 / 条数上限不生效。
 - **修复**：overlay 锚点变了 → 换 slot；状态字段名变了（如 `pendingInteraction`/`completionUnread`）→ 更新 `ActivityBar` 的读取；定位变量变了 → 更新 CSS 的 `var()`。**这些字段是官方内部状态，升级最易变，优先自检**。
 
 ### 功能 3：侧栏完全隐藏
@@ -246,6 +247,7 @@ client.js  window.__ModuleLoader__.load({ id:'dsh-enkeep', factory })
 | 自有 CSS 变量（写） | `--enkeep-dir-prefix` / `--enkeep-tabs-left` / `--enkeep-tabs-shift` / `--dsh-enkeep-grid-cols` / `--enkeep-gp-top-h` | 4/5/3/9 |
 | slot 名 | `shell.overlay` / `conversation.input.dock` / `conversation.session.header.actions` / `conversation.composer.dock` / `conversation.input.right` / `settings.section` / `main` / `sidebar.panellist` / `plugins.detail.actions` | 全部 |
 | 官方状态字段 | `useSessions.byId[]`: `cwd/title/displayTitle/origin/blank/updatedAt/retainedBy.mainView`；`useSessionStatus`: `running/completionUnread/pendingInteraction` | 2/4 |
+| 自有配置字段（index.js schema，volatile） | `chatWidth`(默认wide) / `showLauncher`(true) / `activityWindowHours`(24,1~720) / `activityItemLimit`(20,1~200) / `showCommonWords`(true) / `quickPromptCount`(6,1~12) | 全部 |
 | host 路由 | `/dsh-enkeep-skills` + header `x-dsh-enkeep-skills`（在 index.js，本轮未改） | 8 |
 
 ---
@@ -260,4 +262,5 @@ client.js  window.__ModuleLoader__.load({ id:'dsh-enkeep', factory })
 | `92dbb08` | 修正过时注释与实测数据 |
 | `1afe1b8` | tabs 嵌入标题行：header 76→48px、坐标转换、隐藏 tab 过滤 |
 | `614d1d9` | 标题→对话间距对齐官方 36px（lead 动态计算） |
+| 本次 | 活动区条数上限可配置（`activityItemLimit` 默认 20、1~200，index.js + client.js 双改） |
 | 本文档 | 升级适配全档案（含自检脚本） |

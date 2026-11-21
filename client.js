@@ -676,7 +676,10 @@ window.__ModuleLoader__.load({
     // --- Activity selection (pure) -------------------------------------------
     // 三类命中任一即入选：N 小时内更新 / 运行中 / 未读完成(completionUnread)。
     // 排除 blank、subagent 子行、归档会话。返回按 SessionId 字典序的有限列表（稳定不重排）。
-    const MAX_ITEMS = 30
+    // 活动区最多显示的会话数：默认 20，可被设置页 activityItemLimit 覆盖。
+    // 筛选/排序逻辑保持原样（活动时间窗入选 + SessionId 字典序 + 置顶优先）。
+    const DEFAULT_ITEM_LIMIT = 20
+    const clampItemLimit = (n) => Number.isFinite(n) ? Math.max(1, Math.min(200, Math.trunc(n))) : DEFAULT_ITEM_LIMIT
     function dirName(cwd) {
       if (!cwd) return ''
       const parts = String(cwd).replace(/[\\/]+$/, '').split(/[\\/]/)
@@ -689,7 +692,7 @@ window.__ModuleLoader__.load({
       const title = row && row.title && row.title.trim()
       return title ? (dir ? dir + ': ' + title : title) : (dir || (row && row.displayTitle) || id)
     }
-    function selectActivity(sessions, statuses, archivedIds, hours, now, pinnedSet) {
+    function selectActivity(sessions, statuses, archivedIds, hours, now, pinnedSet, itemLimit) {
       const byId = (sessions && sessions.byId) || {}
       const ids = (sessions && sessions.ids) || []
       const archived = archivedIds || new Set()
@@ -732,7 +735,7 @@ window.__ModuleLoader__.load({
       const byIdOrder = (a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0
       const pinnedRows = out.filter((r) => r.pinned).sort(byIdOrder)
       const normalRows = out.filter((r) => !r.pinned).sort(byIdOrder)
-      return pinnedRows.concat(normalRows).slice(0, MAX_ITEMS)
+      return pinnedRows.concat(normalRows).slice(0, clampItemLimit(itemLimit))
     }
 
     // --- Sidebar icon component (module-scope stable function) ---------------
@@ -1077,6 +1080,7 @@ window.__ModuleLoader__.load({
       const [sidebarHidden, setSidebarHidden] = React.useState(readSidebarHidden)
       const [, setTick] = React.useState(0)
       const [hours, setHours] = React.useState(24)
+      const [itemLimit, setItemLimit] = React.useState(DEFAULT_ITEM_LIMIT)
       const [busy, setBusy] = React.useState(false)
       const busyRef = React.useRef(false)
       const [pos, setPos] = React.useState(readActivityPos)
@@ -1123,15 +1127,16 @@ window.__ModuleLoader__.load({
         try { await fn() } catch (error) { console.warn('[enkeep] activity action failed', error) } finally { busyRef.current = false; setBusy(false) }
       }
 
-      // Re-render when the config form changes (window hours).
-      React.useEffect(() => form.subscribe(() => {
-        const v = Number((form.getSnapshot().value || {}).activityWindowHours)
-        setHours(Number.isFinite(v) && v >= 1 ? v : 24)
-      }), [form])
-      React.useEffect(() => {
-        const v = Number((form.getSnapshot().value || {}).activityWindowHours)
-        setHours(Number.isFinite(v) && v >= 1 ? v : 24)
-      }, [form])
+      // Re-render when the config form changes (window hours / item limit).
+      const readLimits = () => {
+        const val = (form.getSnapshot().value || {})
+        const h = Number(val.activityWindowHours)
+        setHours(Number.isFinite(h) && h >= 1 ? h : 24)
+        const n = Number(val.activityItemLimit)
+        setItemLimit(Number.isFinite(n) && n >= 1 && n <= 200 ? Math.trunc(n) : DEFAULT_ITEM_LIMIT)
+      }
+      React.useEffect(() => form.subscribe(readLimits), [form])
+      React.useEffect(() => { readLimits() }, [form])
 
       // Time-window sessions must fall out on their own: re-evaluate each minute
       // and whenever the window regains focus. Dispose both on unmount (HMR safe).
@@ -1338,7 +1343,7 @@ window.__ModuleLoader__.load({
       const ws = useWorkspaces ? useWorkspaces((s) => s) : undefined
       const archived = ws && ws.archivedSessionIds ? new Set(ws.archivedSessionIds) : new Set()
       const pinnedSet = new Set(pinned)
-      const items = selectActivity(sessions, statuses, archived, hours, Date.now(), pinnedSet)
+      const items = selectActivity(sessions, statuses, archived, hours, Date.now(), pinnedSet, itemLimit)
 
       if (items.length === 0 && !confirmArchive && !stopArchiveTarget && !archiveError && !renameTarget) return null
 
@@ -2279,6 +2284,8 @@ window.__ModuleLoader__.load({
       const wide = value.chatWidth === 'wide'
       const hoursRaw = Number(value.activityWindowHours)
       const hours = Number.isFinite(hoursRaw) && hoursRaw >= 1 ? hoursRaw : 24
+      const limitRaw = Number(value.activityItemLimit)
+      const itemLimit = Number.isFinite(limitRaw) && limitRaw >= 1 && limitRaw <= 200 ? Math.trunc(limitRaw) : DEFAULT_ITEM_LIMIT
       const qRaw = Number(value.quickPromptCount)
       const quickN = Number.isFinite(qRaw) ? Math.max(1, Math.min(12, Math.trunc(qRaw))) : 6
       const busy = React.useRef(false)
@@ -2316,7 +2323,17 @@ window.__ModuleLoader__.load({
                 if (Number.isFinite(n) && n >= 1 && n <= 720) set('activityWindowHours', n)
               },
             }),
-            h('span', { style: { fontSize: 12, opacity: 0.6 } }, '列出更新于该时长内 / 运行中 / 未读的会话')))
+            h('span', { style: { fontSize: 12, opacity: 0.6 } }, '列出更新于该时长内 / 运行中 / 未读的会话')),
+          h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+            h('span', null, '最多显示会话数（1~200）'),
+            h('input', {
+              type: 'number', min: 1, max: 200, step: 1, value: itemLimit, disabled: busy.current, style: numStyle,
+              onChange: (e) => {
+                const n = Number(e.target.value)
+                if (Number.isFinite(n) && n >= 1 && n <= 200) set('activityItemLimit', Math.trunc(n))
+              },
+            }),
+            h('span', { style: { fontSize: 12, opacity: 0.6 } }, '活动区最多列出 N 个会话（置顶优先，仍计入名额）')))
       } else {
         pane = h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
           h('div', { style: { fontWeight: 600 } }, '显示与快捷栏'),
