@@ -175,7 +175,7 @@ window.__ModuleLoader__.load({
       '@media (prefers-reduced-motion: reduce){',
       '[data-enkeep-dot="ongoing"]{animation:none;}}',
       '[data-enkeep-activity-item][data-enkeep-current]{',
-      'background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 12%, transparent);}',
+      'background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 22%, transparent);}',
       '[data-enkeep-activity-label]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       // Confirm / rename dialogs (centred over the viewport, above the bar).
       '[data-enkeep-modal-mask]{position:fixed;inset:0;z-index:1000;',
