@@ -1520,7 +1520,6 @@ window.__ModuleLoader__.load({
           onPointerDown: onDragStart,
           onDoubleClick: resetPos,
         },
-          h('strong', null, '会话'),
           h('div', { 'data-enkeep-activity-tabs': true, role: 'tablist', 'aria-label': '会话分组' },
             h('button', {
               type: 'button', role: 'tab', 'data-enkeep-activity-tab': 'conversations',
@@ -2446,7 +2445,7 @@ window.__ModuleLoader__.load({
     const SETTINGS_TABS = [
       { id: 'prompts', label: '常用提示词' },
       { id: 'width', label: '聊天宽度' },
-      { id: 'activity', label: '会话' },
+      { id: 'activity', label: '浮动对话' },
       { id: 'display', label: '显示与快捷栏' },
     ]
 
@@ -2489,7 +2488,7 @@ window.__ModuleLoader__.load({
           h('p', { style: { fontSize: 12, opacity: 0.6, margin: 0 } }, `当前：${wide ? '宽屏' : '窄屏'}。设置保存在插件配置中，重启后保持。`))
       } else if (tab === 'activity') {
         pane = h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-          h('div', { style: { fontWeight: 600 } }, '会话时间窗'),
+          h('div', { style: { fontWeight: 600 } }, '浮动对话时间窗'),
           h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
             h('span', null, '时间窗（小时）'),
             h('input', {
