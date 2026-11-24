@@ -61,11 +61,12 @@ shell.overlay 槽位组件 ActivityBar
 - 状态标签（决定点点颜色，优先级）：`running → 'ongoing'`、`unread → 'unread'`、`recent → 'idle'`。
 - 当前对话（叠加维度，非互斥）：与工作区侧栏高亮同一数据源——`byId` 中 `retainedBy.mainView > 0` 的那条记为 `current=true`；当前通常也是运行中，故呈"双重标识"（运行中圆点 + 当前徽标）。
 - 行标签：`dir = basename(row.cwd)`；`title = row.title?.trim()`；若 `title` 为空，标签退化为 `dir`（避免 `dir: dir` 重复），否则 `dir + ': ' + title`。
-- 排序：**按 `SessionId` 字典序**（用户 2026-11-19 定稿："不一定要创建顺序，只要稳定即可"）；渲染上限 `MAX_ITEMS = 30`（防止极端情况下刷屏；用户预期 10–20）。
-  - 为什么不用 `updatedAt` / `ids` 顺序：两者都随聊天变化——Host `dsh-api-session-controller/lib/types/list.js:144` 按 `updatedAt` 降序排，`sessions.ids` 沿用该顺序；点开会话聊天会刷新 `updatedAt`，导致列表重排跳动。
-  - 为什么不用 `createdAt`：创建时间只在 Host 线协议头 `SessionWireHeader` 上，未暴露给 `useSessions` 的列表行（`SessionSummary`/`SessionListEntry` 只有 `updatedAt`）。`SessionId` 是 `session-<随机UUID>`（不编码时间），字典序不是时间序，但 **id 不可变**，给出固定顺序——点击/聊天都不动，满足"稳定"要求。
+- 排序：**按 `updatedAt` 倒序（最近活动在前），`SessionId` 字典序兜底**（用户后续拍板，替代 2026-11-19 "按 Id 字典序、不一定要创建顺序" 的定稿）；渲染上限 `MAX_ITEMS = 30`（防止极端情况下刷屏；用户预期 10–20）。
+  - 为什么改用 `updatedAt` 倒序：用户要"最近活动在前"，以最后更新时间排序最直观；`updatedAt` 随聊天刷新，列表会随之重排，这是拍板后接受的预期行为。
+  - `SessionId` 仅作并列兜底：`SessionId` 是 `session-<随机UUID>`（不编码时间），当两条会话 `updatedAt` 相同时按 id 字典序定序，保证结果稳定、不抖动。
+  - 为什么不用 `createdAt`：创建时间只在 Host 线协议头 `SessionWireHeader` 上，未暴露给 `useSessions` 的列表行（`SessionSummary`/`SessionListEntry` 只有 `updatedAt`），故只能以 `updatedAt` 作时间键。
   - **current 不参与排序**：它随点击而变（`retainedBy.mainView` 变化），若作排序键会导致整列反复重排。当前对话改用蓝色高亮 + "当前"徽标标识，仍能一眼定位，只是不再物理置顶。
-  - 入选仍看活跃度（N 小时内更新 / 运行中 / 未读），只是"显示哪些"用 `updatedAt`、`"按什么顺序显示"`用 id——两者解耦。
+  - 入选仍看活跃度（N 小时内更新 / 运行中 / 未读）；`updatedAt` 既参与"显示哪些"的时间窗筛选，也作为"按什么顺序显示"的主排序键。
 
 ### 3.3 UI 与交互
 

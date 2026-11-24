@@ -85,7 +85,7 @@ client.js  window.__ModuleLoader__.load({ id:'dsh-enkeep', factory })
 - **目的/效果**：右侧固定位置（right≈1380）常驻显示"最近/运行中/未读"会话，点条目切会话；5 个头部按钮；圆点五态（运行中绿脉冲/等待互动琥珀空心环/完成未读橙/完成已读灰/当前高亮）；支持置顶、重命名、归档、拖拽。
 - **做法**：`shell.overlay` 是 click-through，根元素显式 `pointer-events`；定位用 `--dsh-frame-overlay-top`、`--dsh-sidebar-inline-padding`（只读），固定在常量 right，不随侧栏展开/折叠/隐藏横跳。头部按钮统一 22×22 盒/15px SVG。
 - **数据源（升级重点）**：`useSessions(s=>s)` 的 `byId`（`cwd`/`title`/`displayTitle`/`origin`/`blank`/`updatedAt`/`retainedBy.mainView`）、`useSessionStatus(s=>s)` 的 `running`/`completionUnread`/`pendingInteraction`。
-- **条数上限（可配置）**：`activityItemLimit`（index.js schema 默认 20、1~200、volatile；设置页「活动区」number 输入；`selectActivity` 末参 + `clampItemLimit` 钳制）。**筛选按活动时间窗、排序按 SessionId 字典序、置顶优先**——三点保持现状，升级时不要改成"最近更新优先"。
+- **条数上限（可配置）**：`activityItemLimit`（index.js schema 默认 20、1~200、volatile；设置页「活动区」number 输入；`selectActivity` 末参 + `clampItemLimit` 钳制）。**筛选按活动时间窗、排序按 updatedAt 倒序（最近活动在前，Id 字典序兜底）、置顶优先**——排序已由用户拍板改为最近更新优先，升级时不要改回字典序。
 - **失效症状**：条不显示 / 位置错乱 / 圆点状态不对 / 点击无效 / 条数上限不生效。
 - **修复**：overlay 锚点变了 → 换 slot；状态字段名变了（如 `pendingInteraction`/`completionUnread`）→ 更新 `ActivityBar` 的读取；定位变量变了 → 更新 CSS 的 `var()`。**这些字段是官方内部状态，升级最易变，优先自检**。
 

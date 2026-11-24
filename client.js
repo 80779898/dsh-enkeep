@@ -675,9 +675,9 @@ window.__ModuleLoader__.load({
 
     // --- Activity selection (pure) -------------------------------------------
     // 三类命中任一即入选：N 小时内更新 / 运行中 / 未读完成(completionUnread)。
-    // 排除 blank、subagent 子行、归档会话。返回按 SessionId 字典序的有限列表（稳定不重排）。
+    // 排除 blank、subagent 子行、归档会话。返回按 updatedAt 倒序（最近活动在前）、Id 字典序兜底的有限列表。
     // 活动区最多显示的会话数：默认 20，可被设置页 activityItemLimit 覆盖。
-    // 筛选/排序逻辑保持原样（活动时间窗入选 + SessionId 字典序 + 置顶优先）。
+    // 筛选/排序逻辑：活动时间窗入选 + 按 updatedAt 倒序（Id 兜底） + 置顶优先。
     const DEFAULT_ITEM_LIMIT = 20
     const clampItemLimit = (n) => Number.isFinite(n) ? Math.max(1, Math.min(200, Math.trunc(n))) : DEFAULT_ITEM_LIMIT
     function dirName(cwd) {
@@ -727,14 +727,14 @@ window.__ModuleLoader__.load({
         // rawTitle is the actual session title (no directory prefix) — used by the
         // rename dialog so editing never bakes "dir: " into the stored title.
         const rawTitle = (row.title && row.title.trim()) || row.displayTitle || id
-        out.push({ id, state, awaiting, current: id === current, pinned: isPinned, label: sessionLabel(row, id), rawTitle })
+        out.push({ id, state, awaiting, current: id === current, pinned: isPinned, label: sessionLabel(row, id), rawTitle, updatedAt: row.updatedAt || 0 })
       }
-      // 排序分两段：置顶区在前，普通区在后；各自按 SessionId 字典序——
-      // id 是不可变的（session-<uuid>），顺序固定，点击/聊天都不会让其重排。
+      // 排序分两段：置顶区在前，普通区在后；各自按 updatedAt 倒序（最近活动在前），
+      // updatedAt 相同时以不可变的 id（session-<uuid>）字典序兜底，保证结果稳定。
       // current 只作高亮/徽标，不排序。
-      const byIdOrder = (a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0
-      const pinnedRows = out.filter((r) => r.pinned).sort(byIdOrder)
-      const normalRows = out.filter((r) => !r.pinned).sort(byIdOrder)
+      const byRecentOrder = (a, b) => (b.updatedAt - a.updatedAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+      const pinnedRows = out.filter((r) => r.pinned).sort(byRecentOrder)
+      const normalRows = out.filter((r) => !r.pinned).sort(byRecentOrder)
       return pinnedRows.concat(normalRows).slice(0, clampItemLimit(itemLimit))
     }
 
@@ -880,6 +880,123 @@ window.__ModuleLoader__.load({
         }
       }, [])
       return null
+    }
+
+    // --- Header task-stats chip (dsh-assistant derived tasks) ----------------
+    // Additive, read-only summary of the CURRENT session's derived tasks. Data
+    // comes from dsh-assistant's soft-mounted GET /dsh-assistant-tasks/stats
+    // behind a custom header. Soft constraint (plan decision 4b): the client
+    // only ever sends its own props.sessionId — never a target from config or
+    // UI; the route itself is public and unauthenticated.
+    const TASKSTATS_URL = '/dsh-assistant-tasks/stats'
+    const TASKSTATS_HEADER = 'x-dsh-assistant-stats'
+    const TASKSTATS_POLL_MS = 5000
+    const TASKSTATS_STYLE_ID = 'enkeep-task-stats'
+    const TASKSTATS_CSS = [
+      // Narrow-window hardening (A14): the chip may shrink below its text width
+      // instead of pushing crumbs out; the label ellipsizes on ONE line so the
+      // 24px height / no-wrap predicate still holds. title= keeps full text.
+      '[data-enkeep-taskstats]{display:inline-flex;align-items:center;flex:0 1 auto;min-width:0;',
+      'height:24px;box-sizing:border-box;padding:0 8px;border-radius:12px;',
+      'background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.12));',
+      'color:var(--dsw-alias-label-secondary);font-size:12px;line-height:24px;',
+      'white-space:nowrap;max-width:100%;overflow:hidden;}',
+      '[data-enkeep-taskstats-label]{min-width:0;overflow:hidden;text-overflow:ellipsis;',
+      'white-space:nowrap;}',
+      '[data-enkeep-taskstats-dot]{width:6px;height:6px;border-radius:50%;',
+      'background:#3fb950;flex:none;margin-right:5px;}',
+    ].join('\n')
+
+    function installTaskStatsStyle() {
+      if (typeof document === 'undefined') return () => {}
+      const existing = document.querySelector(`style[data-plugin-css="${TASKSTATS_STYLE_ID}"]`)
+      if (existing) return () => {}
+      const style = document.createElement('style')
+      style.dataset.plugin = 'dsh-enkeep'
+      style.dataset.pluginCss = TASKSTATS_STYLE_ID
+      style.textContent = TASKSTATS_CSS
+      document.head.appendChild(style)
+      return () => style.remove()
+    }
+
+    // Factory-scope store: single-flight (one request in flight at a time),
+    // seq guard (stale responses never overwrite a newer value), AbortController
+    // for unmount/hide. These are shared by all mounted chips on purpose.
+    const taskStatsSeq = { n: 0 }
+    const taskStatsInFlight = { ctrl: null }
+    const EMPTY_TASK_STATS = { active: 0, waiting: 0, ended24h: 0, hasStats: false }
+
+    async function fetchTaskStats(sessionId, signal) {
+      try {
+        const q = sessionId ? ('?sessionId=' + encodeURIComponent(sessionId)) : ''
+        const res = await fetch(TASKSTATS_URL + q, {
+          headers: { [TASKSTATS_HEADER]: '1' },
+          cache: 'no-store',   // 5s polling: never let an HTTP cache freeze the counts
+          signal,
+        })
+        if (!res || !res.ok) return EMPTY_TASK_STATS
+        const data = await res.json()
+        if (!data || typeof data !== 'object') return EMPTY_TASK_STATS
+        const n = (v) => Number.isFinite(v) ? Math.max(0, Math.trunc(v)) : 0
+        const active = n(data.active), waiting = n(data.waiting), ended24h = n(data.ended24h)
+        return { active, waiting, ended24h, hasStats: active > 0 || waiting > 0 || ended24h > 0 }
+      } catch (e) {
+        // AbortError (hide/unmount) and fetch failure / 404 both degrade to hidden.
+        // No error logging: assistant being absent is a supported state (A15).
+        return EMPTY_TASK_STATS
+      }
+    }
+
+    function AssistantTaskStats({ sessionId }) {
+      const [stats, setStats] = React.useState(EMPTY_TASK_STATS)
+      React.useEffect(() => {
+        if (typeof document === 'undefined' || typeof fetch !== 'function') return () => {}
+        let disposed = false
+        let timer = null
+        let ownCtrl = null
+
+        const tick = async () => {
+          if (disposed || taskStatsInFlight.ctrl) return  // single flight
+          const seq = ++taskStatsSeq.n
+          const ctrl = new AbortController()
+          taskStatsInFlight.ctrl = ctrl
+          ownCtrl = ctrl
+          const data = await fetchTaskStats(sessionId, ctrl.signal)
+          if (taskStatsInFlight.ctrl === ctrl) taskStatsInFlight.ctrl = null
+          if (!disposed && seq === taskStatsSeq.n) setStats(data)  // seqRef guard
+        }
+
+        const onVisible = () => {
+          if (typeof document === 'undefined') return
+          if (document.hidden) {
+            if (timer) { clearInterval(timer); timer = null }
+            if (ownCtrl) { ownCtrl.abort(); ownCtrl = null }
+          } else {
+            tick()  // refresh immediately when the page becomes visible
+            if (!timer) timer = setInterval(tick, TASKSTATS_POLL_MS)
+          }
+        }
+
+        tick()  // first fetch on mount
+        if (!document.hidden && !timer) timer = setInterval(tick, TASKSTATS_POLL_MS)
+        document.addEventListener('visibilitychange', onVisible)
+        return () => {
+          disposed = true
+          if (timer) { clearInterval(timer); timer = null }
+          if (ownCtrl) { ownCtrl.abort(); ownCtrl = null }
+          document.removeEventListener('visibilitychange', onVisible)
+        }
+      }, [sessionId])
+
+      // Decision 4c: hide only when ALL three counts are 0 (no grey "0").
+      if (!stats.hasStats) return null
+      const label = '派生任务 活跃' + stats.active + ' · 待决' + stats.waiting + ' · 近24h终态' + stats.ended24h
+      return h('span', {
+        'data-enkeep-taskstats': true,
+        title: label,   // full text stays available when the label ellipsizes
+      },
+        stats.active > 0 ? h('span', { 'data-enkeep-taskstats-dot': true }) : null,
+        h('span', { 'data-enkeep-taskstats-label': true }, label))
     }
 
     // Above-composer dock: current-session plain label (left) + high-frequency
@@ -2619,6 +2736,18 @@ window.__ModuleLoader__.load({
             }
           }
         }, 'enkeep: header title')
+
+        // (3c) Derived-task stats chip in the SAME additive header.actions list,
+        // order 25 -> right after job-list (20). Never register lineage.
+        ctx.effect(() => {
+          const stopStyle = installTaskStatsStyle()
+          const stopChip = ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+            name: 'conversation.session.header.actions',
+            id: 'enkeep-assistant-task-stats',
+            order: 25,
+          }, (props) => h(AssistantTaskStats, { sessionId: props.sessionId })))
+          return () => { stopChip(); stopStyle() }
+        }, 'enkeep: assistant task stats')
 
         // (4) Settings page entry with toggles + activity window input.
         ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
