@@ -304,8 +304,16 @@
 用户在本计划实施完成后追加四项 UX 要求，均在 `client.js` 落地（与上面步骤的初始实现有差异，以本节为准）：
 
 1. **上区头部名字**：分栏移除 tab 外壳时名字一并消失，补回 `h('strong', null, '对话')`；复用既有 `[data-enkeep-activity-head] strong` CSS，span 计数仍 `.75` 弱化。
-2. **下区外派列表受数量配置约束**：`DispatchPanel` 新增 `itemLimit` prop，取 `ActivityBar` 已订阅的配置字段 `activityItemLimit`（与 `selectActivity` 共用 `clampItemLimit`，1~200、非法回退 20），按有效行截断。
+2. **下区外派列表受数量配置约束**：`DispatchPanel` 新增 `itemLimit` prop，取 `ActivityBar` 已订阅的配置字段 `activityItemLimit`（与 `selectActivity` 共用 `clampItemLimit`，1~200、非法回退 20），按有效行截断。**后续批次改为独立参数 `dispatchItemLimit`（见 §9 第 2 点），本节描述的历史实现已被取代。**
 3. **点外派不清下区、上区助手对话不变**：新增 `activeWorkerId` state 与 `onOpenWorker`（只设高亮 + `openSession`，不动 `selectedId`、不 `clearLower`）；derived-current 校正遇到 worker current 只同步高亮；`current` 回到非 worker 一律清高亮（防侧栏点回同一助手时绿高亮残留）。下区项用 `data-enkeep-dispatch-current` 做背景 + 左侧强调条高亮。
 4. **外派会话不出现在上区**：`selectActivity` 加 `isWorker` 标记，`conversations` 过滤掉全部 worker（含置顶/当前，取消早期「置顶/当前 worker 留在上区」的已知行为）。上区「当前」高亮改为单一源 `it.id === (selectedId || groups.current)`，tooltip 区分「当前对话」/「外派来源对话」。冷启动停在 worker 且上区空时，整条活动区仍保留（保留新建/设置入口）。
 
-> `selectActivity` 返回的 `dispatch` 字段仍保留但未删除：当前无人读取，属早期 tab2 遗留死代码（保留未删以免扩大改动面）。`docs/ACTIVITY-LIMIT-PLAN.md` 记录上区上限的初始规划（已标"已实施"），下区复用同一配置见本节第 2 点。
+> `selectActivity` 返回的 `dispatch` 字段仍保留但未删除：当前无人读取，属早期 tab2 遗留死代码（保留未删以免扩大改动面）。`docs/ACTIVITY-LIMIT-PLAN.md` 记录上区上限的初始规划（已标"已实施"）；下区上限已独立为 `dispatchItemLimit`，见 §9。
+
+---
+
+## 9. 第三批用户补充改动（已落地）
+
+1. **下区高度**：`[data-enkeep-dispatch-list]` 的 `max-height` 132px → 280px，容纳默认 10 条（每项约 25px + gap），默认无滚动条；超出仍可滚动。
+2. **独立数量参数**：`index.js` 的 `Config` 新增 `dispatchItemLimit`（默认 10，1~200，`volatile()`，写入诊断日志），与上区 `activityItemLimit` 完全独立；设置页「浮动对话」页签新增独立数字输入，`ActivityBar` 订阅该字段并传 `dispatchLimit` 给 `DispatchPanel`（取代原 `itemLimit`）；`DEFAULT_DISPATCH_LIMIT`/`clampDispatchLimit` 模块级常量统一回退口径（非法回退 10，而非上区的 20）。
+3. **按最后活动时间排序**：`DispatchPanel` 不再按接口返回的 `workerSessionIds` 顺序截断，而是先收集全部有效行（带 `updatedAt`），按 `updatedAt` 倒序（id 字典序兜底，与上区 `byRecentOrder` 同口径）排序后再截断——显示的是最近活动的 N 个外派，而非接口顺序的前 N 个。

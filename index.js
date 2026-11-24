@@ -35,6 +35,9 @@ export const Config = Schema.object({
   // 活动区悬浮条最多显示的会话数（默认 20，1~200）。
   // volatile：设置页改后即时生效，无需重启 web。
   activityItemLimit: Schema.number().step(1).min(1).max(200).default(20).volatile(),
+  // 下区「当前对话的外派对话」列表独立上限（默认 10，1~200）。与 activityItemLimit
+  // 分离，避免调上区条数连带改变外派列表；默认 10 与列表高度 280px 匹配（无滚动条）。
+  dispatchItemLimit: Schema.number().step(1).min(1).max(200).default(10).volatile(),
   // 常用词入口：是否在 composer 显示常用词触发按钮。volatile 便于设置页即时切换。
   showCommonWords: Schema.boolean().default(true).volatile(),
   // 输入框上方高频提示词快捷按钮显示数量（1~12）。volatile：设置页即时生效。
@@ -49,9 +52,10 @@ export function apply(ctx, config) {
     const launcher = config.showLauncher.get()
     const hours = config.activityWindowHours.get()
     const itemLimit = config.activityItemLimit.get()
+    const dispatchLimit = config.dispatchItemLimit.get()
     const words = config.showCommonWords.get()
     const quickN = config.quickPromptCount.get()
-    ctx.logger?.info('[enkeep] volatile config: chatWidth=%s showLauncher=%s activityWindowHours=%s activityItemLimit=%s showCommonWords=%s quickPromptCount=%s', width, launcher, hours, itemLimit, words, quickN)
+    ctx.logger?.info('[enkeep] volatile config: chatWidth=%s showLauncher=%s activityWindowHours=%s activityItemLimit=%s dispatchItemLimit=%s showCommonWords=%s quickPromptCount=%s', width, launcher, hours, itemLimit, dispatchLimit, words, quickN)
   })
 
   installWordRoutes(ctx)

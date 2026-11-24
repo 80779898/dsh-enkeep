@@ -135,7 +135,8 @@ window.__ModuleLoader__.load({
       'width:22px;height:22px;border-radius:6px;padding:0;',
       'display:inline-flex;align-items:center;justify-content:center;}',
       '[data-enkeep-dispatch-toggle]:hover{background:var(--dsw-alias-bg-layer-3);}',
-      '[data-enkeep-dispatch-list]{max-height:132px;overflow-y:auto;overscroll-behavior:contain;',
+      // 下区高度：容纳默认 10 条（每项约 25px + gap），无滚动条；超出仍可滚动。
+      '[data-enkeep-dispatch-list]{max-height:280px;overflow-y:auto;overscroll-behavior:contain;',
       'display:flex;flex-direction:column;gap:2px;}',
       '[data-enkeep-dispatch-item]{display:flex;align-items:center;width:100%;',
       'border-radius:6px;color:inherit;font-size:12px;}',
@@ -724,6 +725,9 @@ window.__ModuleLoader__.load({
     // 筛选/排序逻辑：活动时间窗入选 + 按 updatedAt 倒序（Id 兜底） + 置顶优先。
     const DEFAULT_ITEM_LIMIT = 20
     const clampItemLimit = (n) => Number.isFinite(n) ? Math.max(1, Math.min(200, Math.trunc(n))) : DEFAULT_ITEM_LIMIT
+    // 下区外派列表独立上限默认 10（与上区会话数互不影响；与 280px 高度匹配）。
+    const DEFAULT_DISPATCH_LIMIT = 10
+    const clampDispatchLimit = (n) => Number.isFinite(n) ? Math.max(1, Math.min(200, Math.trunc(n))) : DEFAULT_DISPATCH_LIMIT
     function dirName(cwd) {
       if (!cwd) return ''
       const parts = String(cwd).replace(/[\\/]+$/, '').split(/[\\/]/)
@@ -1100,7 +1104,7 @@ window.__ModuleLoader__.load({
     }
 
     function DispatchPanel({ selectedId, selectedIdRef, isAssistant, registerClear,
-      sessions, statuses, archivedIds, lowerCollapsed, onToggleLower, itemLimit,
+      sessions, statuses, archivedIds, lowerCollapsed, onToggleLower, dispatchLimit,
       activeWorkerId, onOpenWorker }) {
       // Issue ④: sessions/statuses snapshots are subscribed ONCE in ActivityBar
       // and passed down. A child re-renders together with its parent, so the
@@ -1171,13 +1175,11 @@ window.__ModuleLoader__.load({
 
       const byId = (sessions && sessions.byId) || {}
       const archived = archivedIds || new Set()
-      const rows = []
-      // 外派列表同样受配置页「最多显示会话数」限制：与 selectActivity 共用
-      // clampItemLimit（1~200，非法回退 20），达到上限即停止收录。
-      const limit = clampItemLimit(itemLimit)
+      // 先收集全部有效外派行（带 updatedAt），按最后活动时间倒序排序后再按独立上限
+      // 截断——保证显示的是「最近活动」的 N 个，而不是接口返回顺序的前 N 个。
+      const allRows = []
       for (const id of workerIds) {
         if (typeof id !== 'string' || !id) continue
-        if (rows.length >= limit) break
         const row = byId[id]
         if (!row || row.blank || row.origin === 'subagent' || archived.has(id)) continue
         // Same dot logic as selectActivity (kept inline so the upper group's
@@ -1187,8 +1189,11 @@ window.__ModuleLoader__.load({
         const unread = !!(st && st.completionUnread === true)
         const awaiting = !!(st && st.pendingInteraction !== undefined)
         const state = awaiting ? 'awaiting' : (running ? 'ongoing' : (unread ? 'unread' : 'idle'))
-        rows.push({ id, state, label: sessionLabel(row, id) })
+        allRows.push({ id, state, label: sessionLabel(row, id), updatedAt: row.updatedAt || 0 })
       }
+      // 排序口径与 selectActivity 的 byRecentOrder 一致：updatedAt 倒序、Id 字典序兜底。
+      allRows.sort((a, b) => (b.updatedAt - a.updatedAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      const rows = allRows.slice(0, clampDispatchLimit(dispatchLimit))
 
       return h('div', { 'data-enkeep-dispatch-panel': true },
         h('div', { 'data-enkeep-dispatch-head': true },
@@ -1433,6 +1438,7 @@ window.__ModuleLoader__.load({
       const [, setTick] = React.useState(0)
       const [hours, setHours] = React.useState(24)
       const [itemLimit, setItemLimit] = React.useState(DEFAULT_ITEM_LIMIT)
+      const [dispatchLimit, setDispatchLimit] = React.useState(DEFAULT_DISPATCH_LIMIT)
       const [busy, setBusy] = React.useState(false)
       const busyRef = React.useRef(false)
       const [pos, setPos] = React.useState(readActivityPos)
@@ -1486,6 +1492,8 @@ window.__ModuleLoader__.load({
         setHours(Number.isFinite(h) && h >= 1 ? h : 24)
         const n = Number(val.activityItemLimit)
         setItemLimit(Number.isFinite(n) && n >= 1 && n <= 200 ? Math.trunc(n) : DEFAULT_ITEM_LIMIT)
+        const d = Number(val.dispatchItemLimit)
+        setDispatchLimit(Number.isFinite(d) && d >= 1 && d <= 200 ? Math.trunc(d) : DEFAULT_DISPATCH_LIMIT)
       }
       React.useEffect(() => form.subscribe(readLimits), [form])
       React.useEffect(() => { readLimits() }, [form])
@@ -1875,8 +1883,8 @@ window.__ModuleLoader__.load({
           archivedIds: archived,
           lowerCollapsed,
           onToggleLower: () => setLowerCollapsed((v) => !v),
-          // 与配置页「最多显示会话数」同源（ActivityBar 已订阅该字段）。
-          itemLimit,
+          // 下区外派独立上限（ActivityBar 已订阅 dispatchItemLimit）。
+          dispatchLimit,
           // 当前外派高亮 + 点击处理：不动 selectedId、不清空下区列表。
           activeWorkerId,
           onOpenWorker,
@@ -2729,6 +2737,8 @@ window.__ModuleLoader__.load({
       const hours = Number.isFinite(hoursRaw) && hoursRaw >= 1 ? hoursRaw : 24
       const limitRaw = Number(value.activityItemLimit)
       const itemLimit = Number.isFinite(limitRaw) && limitRaw >= 1 && limitRaw <= 200 ? Math.trunc(limitRaw) : DEFAULT_ITEM_LIMIT
+      const dispatchRaw = Number(value.dispatchItemLimit)
+      const dispatchLimit = Number.isFinite(dispatchRaw) && dispatchRaw >= 1 && dispatchRaw <= 200 ? Math.trunc(dispatchRaw) : DEFAULT_DISPATCH_LIMIT
       const qRaw = Number(value.quickPromptCount)
       const quickN = Number.isFinite(qRaw) ? Math.max(1, Math.min(12, Math.trunc(qRaw))) : 6
       const busy = React.useRef(false)
@@ -2776,7 +2786,17 @@ window.__ModuleLoader__.load({
                 if (Number.isFinite(n) && n >= 1 && n <= 200) set('activityItemLimit', Math.trunc(n))
               },
             }),
-            h('span', { style: { fontSize: 12, opacity: 0.6 } }, '上区对话、下区外派各最多列出 N 个会话（置顶优先，仍计入名额；合计最多 2N）')))
+            h('span', { style: { fontSize: 12, opacity: 0.6 } }, '上区对话列表最多列出 N 个会话（置顶优先，仍计入名额）')),
+          h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+            h('span', null, '外派列表最多显示（1~200）'),
+            h('input', {
+              type: 'number', min: 1, max: 200, step: 1, value: dispatchLimit, disabled: busy.current, style: numStyle,
+              onChange: (e) => {
+                const n = Number(e.target.value)
+                if (Number.isFinite(n) && n >= 1 && n <= 200) set('dispatchItemLimit', Math.trunc(n))
+              },
+            }),
+            h('span', { style: { fontSize: 12, opacity: 0.6 } }, '下区「当前对话的外派对话」独立上限（默认 10，与上方会话数互不影响）')))
       } else {
         pane = h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
           h('div', { style: { fontWeight: 600 } }, '显示与快捷栏'),
