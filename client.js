@@ -119,6 +119,14 @@ window.__ModuleLoader__.load({
       '[data-enkeep-activity-bar][data-dragging]{cursor:grabbing;',
       'box-shadow:0 10px 32px rgba(0,0,0,.42);transition:none;}',
       '[data-enkeep-activity-head] strong{font-weight:600;}',
+      // 活动区分组 Tab：第一"对话"、第二"外派任务"；与 header 的对话/轨迹 tab 完全独立。
+      '[data-enkeep-activity-tabs]{display:inline-flex;align-items:center;gap:2px;}',
+      '[data-enkeep-activity-tab]{border:0;background:transparent;color:inherit;',
+      'font-size:12px;padding:2px 6px;border-radius:5px;cursor:pointer;opacity:.7;}',
+      '[data-enkeep-activity-tab]:hover{background:var(--dsw-alias-bg-layer-3);}',
+      '[data-enkeep-activity-tab][aria-selected="true"]{opacity:1;font-weight:600;',
+      'background:var(--dsw-alias-bg-layer-3);}',
+      '[data-enkeep-activity-empty]{padding:10px 8px;font-size:12px;opacity:.7;text-align:center;}',
       '[data-enkeep-activity-actions]{display:flex;align-items:center;gap:2px;margin-left:auto;}',
       // 所有头部按钮共用一个尺寸盒：22×22、15px SVG、无边框，保证视觉大小一致。
       '[data-enkeep-activity-action],[data-enkeep-activity-toggle]{',
@@ -692,6 +700,16 @@ window.__ModuleLoader__.load({
       const title = row && row.title && row.title.trim()
       return title ? (dir ? dir + ': ' + title : title) : (dir || (row && row.displayTitle) || id)
     }
+    // 外派（assistant worker）会话识别。必须与 dsh-assistant 的约定保持一致：
+    // 主判据是会话 id 前缀 da-worker-（同步、冷启动可用）；预设为辅助判据，
+    // 防御 id 规则变化。字段缺失时用可选链安全降级为"仅前缀"。
+    // 注意：这里只判"是否外派会话"；当前/置顶例外在 selectActivity 内处理。
+    function isAssistantWorkerSession(id, row) {
+      if (!id) return false
+      if (id.startsWith('da-worker-')) return true
+      const preset = row && row.projectionValues && row.projectionValues.agentPreset
+      return preset === 'dsh-assistant-worker'
+    }
     function selectActivity(sessions, statuses, archivedIds, hours, now, pinnedSet, itemLimit) {
       const byId = (sessions && sessions.byId) || {}
       const ids = (sessions && sessions.ids) || []
@@ -727,15 +745,29 @@ window.__ModuleLoader__.load({
         // rawTitle is the actual session title (no directory prefix) — used by the
         // rename dialog so editing never bakes "dir: " into the stored title.
         const rawTitle = (row.title && row.title.trim()) || row.displayTitle || id
-        out.push({ id, state, awaiting, current: id === current, pinned: isPinned, label: sessionLabel(row, id), rawTitle, updatedAt: row.updatedAt || 0 })
+        // 外派会话分到第二 Tab；当前/置顶会话是例外，仍留在第一 Tab（对话）。
+        // current 沿用上面按 retainedBy.mainView 推出的值，不引入新的全局状态。
+        const isCurrent = id === current
+        const dispatch = isAssistantWorkerSession(id, row) && !isPinned && !isCurrent
+        out.push({ id, state, awaiting, current: isCurrent, pinned: isPinned, dispatch, label: sessionLabel(row, id), rawTitle, updatedAt: row.updatedAt || 0 })
       }
       // 排序分两段：置顶区在前，普通区在后；各自按 updatedAt 倒序（最近活动在前），
       // updatedAt 相同时以不可变的 id（session-<uuid>）字典序兜底，保证结果稳定。
       // current 只作高亮/徽标，不排序。
       const byRecentOrder = (a, b) => (b.updatedAt - a.updatedAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-      const pinnedRows = out.filter((r) => r.pinned).sort(byRecentOrder)
-      const normalRows = out.filter((r) => !r.pinned).sort(byRecentOrder)
-      return pinnedRows.concat(normalRows).slice(0, clampItemLimit(itemLimit))
+      // per-Tab 截断（已拍板的新语义）：先按 dispatch 分成两组，每组各自
+      // "置顶优先 + updatedAt 倒序"，再各自截 N —— 合计最多 2N。
+      // 置顶仍计入所在 Tab 的名额；这与旧的"全区合计 N"语义不同。
+      const limit = clampItemLimit(itemLimit)
+      const take = (rows) => {
+        const pinnedRows = rows.filter((r) => r.pinned).sort(byRecentOrder)
+        const normalRows = rows.filter((r) => !r.pinned).sort(byRecentOrder)
+        return pinnedRows.concat(normalRows).slice(0, limit)
+      }
+      return {
+        conversations: take(out.filter((r) => !r.dispatch)),
+        dispatch: take(out.filter((r) => r.dispatch)),
+      }
     }
 
     // --- Sidebar icon component (module-scope stable function) ---------------
@@ -1194,6 +1226,8 @@ window.__ModuleLoader__.load({
 
     function ActivityBar({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession, useSessions, useSessionStatus, useWorkspaces }) {
       const [collapsed, setCollapsed] = React.useState(false)
+      // 活动区分组 Tab：第一"对话"、第二"外派任务"，默认第一（用户自己切过去看）。
+      const [activeTab, setActiveTab] = React.useState('conversations')
       const [sidebarHidden, setSidebarHidden] = React.useState(readSidebarHidden)
       const [, setTick] = React.useState(0)
       const [hours, setHours] = React.useState(24)
@@ -1460,9 +1494,13 @@ window.__ModuleLoader__.load({
       const ws = useWorkspaces ? useWorkspaces((s) => s) : undefined
       const archived = ws && ws.archivedSessionIds ? new Set(ws.archivedSessionIds) : new Set()
       const pinnedSet = new Set(pinned)
-      const items = selectActivity(sessions, statuses, archived, hours, Date.now(), pinnedSet, itemLimit)
+      // selectActivity 返回两组；当前 Tab 决定渲染哪一组与头部计数。
+      const groups = selectActivity(sessions, statuses, archived, hours, Date.now(), pinnedSet, itemLimit)
+      const items = groups[activeTab]
+      const hasItems = groups.conversations.length > 0 || groups.dispatch.length > 0
 
-      if (items.length === 0 && !confirmArchive && !stopArchiveTarget && !archiveError && !renameTarget) return null
+      // 只有两个 Tab 都空且无对话框时才整条隐藏；仅当前 Tab 空时显示空态。
+      if (!hasItems && !confirmArchive && !stopArchiveTarget && !archiveError && !renameTarget) return null
 
       return h('div', {
         'data-enkeep-activity-bar': true,
@@ -1476,6 +1514,17 @@ window.__ModuleLoader__.load({
           onDoubleClick: resetPos,
         },
           h('strong', null, '活动区'),
+          h('div', { 'data-enkeep-activity-tabs': true, role: 'tablist', 'aria-label': '活动区分组' },
+            h('button', {
+              type: 'button', role: 'tab', 'data-enkeep-activity-tab': 'conversations',
+              'aria-selected': activeTab === 'conversations',
+              onClick: () => setActiveTab('conversations'),
+            }, '对话'),
+            h('button', {
+              type: 'button', role: 'tab', 'data-enkeep-activity-tab': 'dispatch',
+              'aria-selected': activeTab === 'dispatch',
+              onClick: () => setActiveTab('dispatch'),
+            }, '外派任务')),
           h('span', null, `${items.length} 个`),
           h('div', { 'data-enkeep-activity-actions': true },
             h('button', {
@@ -1517,44 +1566,47 @@ window.__ModuleLoader__.load({
               title: collapsed ? '展开活动区' : '收起活动区',
               'aria-label': collapsed ? '展开活动区' : '收起活动区',
             }, h(HeaderIcon, { kind: collapsed ? 'expand' : 'collapse' })))),
-        !collapsed && items.map((it) =>
-          h('div', {
-            key: it.id,
-            'data-enkeep-activity-item': true,
-            'data-enkeep-pinned': it.pinned ? true : undefined,
-            'data-enkeep-current': it.current ? true : undefined,
-          },
-            h('button', {
-              type: 'button',
-              'data-enkeep-activity-main': true,
-              title: it.label + (it.awaiting ? '（等待互动）' : '') + (it.current ? '（当前对话）' : ''),
-              onClick: () => openSession(it.id),
-            },
-              h('span', { 'data-enkeep-dot': it.state }),
-              h('span', { 'data-enkeep-activity-label': true }, it.label)),
-            h('div', { 'data-enkeep-activity-row-actions': true },
-              h('button', {
-                type: 'button',
-                'data-enkeep-row-action': true,
-                title: '重命名',
-                'aria-label': '重命名',
-                onClick: (e) => { e.stopPropagation(); askRename(it.id, it.rawTitle) },
-              }, h(HeaderIcon, { kind: 'rename' })),
-              h('button', {
-                type: 'button',
-                'data-enkeep-row-action': true,
-                title: '归档',
-                'aria-label': '归档',
-                onClick: (e) => { e.stopPropagation(); askArchive(it.id, it.label) },
-              }, h(HeaderIcon, { kind: 'archive' })),
-              h('button', {
-                type: 'button',
-                'data-enkeep-row-action': true,
-                'data-enkeep-row-pin': it.pinned ? true : undefined,
-                title: it.pinned ? '取消置顶' : '置顶',
-                'aria-label': it.pinned ? '取消置顶' : '置顶',
-                onClick: (e) => { e.stopPropagation(); togglePin(it.id) },
-              }, h(HeaderIcon, { kind: it.pinned ? 'unpin' : 'pin' }))))),
+        !collapsed && (items.length
+          ? items.map((it) =>
+              h('div', {
+                key: it.id,
+                'data-enkeep-activity-item': true,
+                'data-enkeep-pinned': it.pinned ? true : undefined,
+                'data-enkeep-current': it.current ? true : undefined,
+              },
+                h('button', {
+                  type: 'button',
+                  'data-enkeep-activity-main': true,
+                  title: it.label + (it.awaiting ? '（等待互动）' : '') + (it.current ? '（当前对话）' : ''),
+                  onClick: () => openSession(it.id),
+                },
+                  h('span', { 'data-enkeep-dot': it.state }),
+                  h('span', { 'data-enkeep-activity-label': true }, it.label)),
+                h('div', { 'data-enkeep-activity-row-actions': true },
+                  h('button', {
+                    type: 'button',
+                    'data-enkeep-row-action': true,
+                    title: '重命名',
+                    'aria-label': '重命名',
+                    onClick: (e) => { e.stopPropagation(); askRename(it.id, it.rawTitle) },
+                  }, h(HeaderIcon, { kind: 'rename' })),
+                  h('button', {
+                    type: 'button',
+                    'data-enkeep-row-action': true,
+                    title: '归档',
+                    'aria-label': '归档',
+                    onClick: (e) => { e.stopPropagation(); askArchive(it.id, it.label) },
+                  }, h(HeaderIcon, { kind: 'archive' })),
+                  h('button', {
+                    type: 'button',
+                    'data-enkeep-row-action': true,
+                    'data-enkeep-row-pin': it.pinned ? true : undefined,
+                    title: it.pinned ? '取消置顶' : '置顶',
+                    'aria-label': it.pinned ? '取消置顶' : '置顶',
+                    onClick: (e) => { e.stopPropagation(); togglePin(it.id) },
+                  }, h(HeaderIcon, { kind: it.pinned ? 'unpin' : 'pin' })))))
+          : h('div', { 'data-enkeep-activity-empty': true },
+              activeTab === 'dispatch' ? '暂无外派任务' : '暂无活动会话')),
         // Dialogs are portaled to document.body: the bar root carries a CSS
         // transform (drag offset), which would otherwise make position:fixed
         // resolve against the 300px bar instead of the viewport, and would trap
@@ -2450,7 +2502,7 @@ window.__ModuleLoader__.load({
                 if (Number.isFinite(n) && n >= 1 && n <= 200) set('activityItemLimit', Math.trunc(n))
               },
             }),
-            h('span', { style: { fontSize: 12, opacity: 0.6 } }, '活动区最多列出 N 个会话（置顶优先，仍计入名额）')))
+            h('span', { style: { fontSize: 12, opacity: 0.6 } }, '每个 Tab 最多列出 N 个会话（置顶优先，仍计入名额；合计最多 2N）')))
       } else {
         pane = h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
           h('div', { style: { fontWeight: 600 } }, '显示与快捷栏'),
