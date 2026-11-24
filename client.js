@@ -123,25 +123,40 @@ window.__ModuleLoader__.load({
       '[data-enkeep-activity-bar][data-dragging]{cursor:grabbing;',
       'box-shadow:0 10px 32px rgba(0,0,0,.42);transition:none;}',
       '[data-enkeep-activity-head] strong{font-weight:600;}',
-      // 会话分组 Tab：第一"对话"、第二"外派任务"；与 header 的对话/轨迹 tab 完全独立。
-      // 可读性优先：旧版未选中用 tertiary（浅色主题本身 3.25:1），叠头部 .75 后仅 2.30:1；
-      // 选中 business-primary 叠 .75 后 2.59:1（浅色下纯色本身也仅 3.72:1），
-      // 这就是"暗淡、根本看不清"的根因。
-      // 现改为：未选中 secondary（浅色 5.09:1 / 深色 9.64:1），hover primary；
-      // 选中 business-primary 与 label-primary 混色——浅色自动压暗、深色自动提亮，
-      // 两种主题均 >6:1，同时保留蓝色语义与 2px 底部强调线。
-      // 与轨迹 tab"纯 business-primary 选中"的差异原因：该色在浅色主题对比度不足。
-      '[data-enkeep-activity-tabs]{display:inline-flex;align-items:center;gap:16px;position:relative;}',
-      '[data-enkeep-activity-tab]{border:0;background:transparent;',
-      'color:var(--dsw-alias-label-secondary, #61666b);font-size:13px;font-weight:500;line-height:16px;',
-      'padding:0 0 9px;position:relative;cursor:pointer;}',
-      '[data-enkeep-activity-tab]::after{content:"";background:transparent;border-radius:2px;',
-      'height:2px;position:absolute;bottom:-1px;left:0;right:0;}',
-      '[data-enkeep-activity-tab]:hover{color:var(--dsw-alias-label-primary, #0f1115);}',
-      '[data-enkeep-activity-tab][aria-selected="true"]{',
-      'color:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 65%, var(--dsw-alias-label-primary, #0f1115));}',
-      '[data-enkeep-activity-tab][aria-selected="true"]::after{',
-      'background:var(--dsw-alias-state-business-primary, #4c8bf5);}',
+      // 上下分栏：上区列表容器与下区列表容器各自独立滚动；公共拖拽头不随滚动移动。
+      '[data-enkeep-activity-list]{max-height:264px;overflow-y:auto;overscroll-behavior:contain;}',
+      // 下区面板（当前对话的外派对话）：视觉沿用活动区变量，选择器与上区完全隔离。
+      '[data-enkeep-dispatch-panel]{display:flex;flex-direction:column;',
+      'border-top:1px solid var(--dsw-alias-border-l3);padding-top:6px;margin-top:2px;}',
+      '[data-enkeep-dispatch-head]{display:flex;align-items:center;gap:6px;',
+      'font-size:12px;opacity:.75;padding:0 2px 4px;user-select:none;}',
+      '[data-enkeep-dispatch-count]{margin-left:auto;}',
+      '[data-enkeep-dispatch-toggle]{border:0;background:transparent;color:inherit;cursor:pointer;',
+      'width:22px;height:22px;border-radius:6px;padding:0;',
+      'display:inline-flex;align-items:center;justify-content:center;}',
+      '[data-enkeep-dispatch-toggle]:hover{background:var(--dsw-alias-bg-layer-3);}',
+      '[data-enkeep-dispatch-list]{max-height:132px;overflow-y:auto;overscroll-behavior:contain;',
+      'display:flex;flex-direction:column;gap:2px;}',
+      '[data-enkeep-dispatch-item]{display:flex;align-items:center;width:100%;',
+      'border-radius:6px;color:inherit;font-size:12px;}',
+      '[data-enkeep-dispatch-item]:hover{background:var(--dsw-alias-bg-layer-3);}',
+      '[data-enkeep-dispatch-main]{display:flex;align-items:center;gap:8px;',
+      'flex:1 1 auto;min-width:0;text-align:left;border:0;border-radius:6px;',
+      'padding:5px 8px;background:transparent;color:inherit;cursor:pointer;',
+      'font-size:12px;}',
+      '[data-enkeep-dispatch-dot]{flex:0 0 auto;width:8px;height:8px;border-radius:50%;',
+      'background:var(--dsw-alias-text-4, #8b8b8b);}',
+      '[data-enkeep-dispatch-dot="ongoing"]{background:var(--dsw-alias-state-success-primary, #35b37e);',
+      'animation:enkeep-activity-pulse 1.6s ease-in-out infinite;}',
+      '[data-enkeep-dispatch-dot="awaiting"]{background:transparent;box-sizing:border-box;',
+      'border:2px solid var(--dsw-alias-state-warn-label, #d89614);}',
+      '[data-enkeep-dispatch-dot="unread"]{background:var(--dsw-alias-state-warn-label, #d89614);',
+      'box-shadow:0 0 0 2px color-mix(in srgb, var(--dsw-alias-state-warn-label, #d89614) 25%, transparent);}',
+      '[data-enkeep-dispatch-dot="idle"]{background:var(--dsw-alias-text-4, #8b8b8b);}',
+      '[data-enkeep-dispatch-label]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '[data-enkeep-dispatch-empty]{padding:10px 8px;font-size:12px;opacity:.7;text-align:center;}',
+      '@media (prefers-reduced-motion: reduce){',
+      '[data-enkeep-dispatch-dot="ongoing"]{animation:none;}}',
       '[data-enkeep-activity-empty]{padding:10px 8px;font-size:12px;opacity:.7;text-align:center;}',
       '[data-enkeep-activity-actions]{display:flex;align-items:center;gap:2px;margin-left:auto;opacity:.75;}',
       // 所有头部按钮共用一个尺寸盒：22×22、15px SVG、无边框，保证视觉大小一致。
@@ -783,6 +798,9 @@ window.__ModuleLoader__.load({
       return {
         conversations: take(out.filter((r) => !r.dispatch)),
         dispatch: take(out.filter((r) => r.dispatch)),
+        // Derived current (retainedBy.mainView > 0) is published for the lower
+        // panel's selection reconciliation; the two groups above are untouched.
+        current,
       }
     }
 
@@ -1047,6 +1065,144 @@ window.__ModuleLoader__.load({
         h('span', { 'data-enkeep-taskstats-label': true }, label))
     }
 
+    // --- Lower panel: read-only sessions bridge + cross-render ----------------
+    // Data comes from dsh-assistant's soft-mounted GET /dsh-assistant-tasks/sessions
+    // behind a custom header. Same factory-scope single-flight / seq / abort
+    // trio as AssistantTaskStats, but bound to the currently selected session.
+    const DISPATCH_SESSIONS_URL = '/dsh-assistant-tasks/sessions'
+    const DISPATCH_SESSIONS_HEADER = 'x-dsh-assistant-sessions'
+    const dispatchSeq = { n: 0 }
+    const dispatchInFlight = { ctrl: null }
+
+    async function fetchDispatchSessions(selectedId, signal) {
+      try {
+        const res = await fetch(DISPATCH_SESSIONS_URL + '?sessionId=' + encodeURIComponent(selectedId), {
+          headers: { [DISPATCH_SESSIONS_HEADER]: '1' },
+          cache: 'no-store',
+          signal,
+        })
+        if (!res || !res.ok) return []
+        const data = await res.json()
+        if (!data || data.ok !== true || !Array.isArray(data.workerSessionIds)) return []
+        return data.workerSessionIds.filter((id) => typeof id === 'string' && id.length > 0)
+      } catch (e) {
+        // Abort / 404 / assistant absent all degrade to "no dispatch" (empty state).
+        return []
+      }
+    }
+
+    function DispatchPanel({ selectedId, selectedIdRef, isAssistant, registerClear,
+      openSession, sessions, statuses, archivedIds, lowerCollapsed, onToggleLower }) {
+      // Issue ④: sessions/statuses snapshots are subscribed ONCE in ActivityBar
+      // and passed down. A child re-renders together with its parent, so the
+      // cross-render result is byte-for-byte identical without two extra (s)=>s
+      // subscriptions here.
+      const [workerIds, setWorkerIds] = React.useState([])
+      // Issue ②: monotonic nonce. clearNow() is invoked synchronously on every
+      // selection (row click / derived-current correction); bumping it here keeps
+      // the fetch effect running even when the same id is clicked again, so the
+      // just-cleared panel is never left in a false empty state.
+      const [fetchNonce, setFetchNonce] = React.useState(0)
+      const seqRef = React.useRef(dispatchSeq)
+
+      // Registered with ActivityBar: its row onClick calls this SYNCHRONOUSLY,
+      // before the async fetch, so old rows vanish in the same render frame and
+      // any in-flight response is invalidated before a new one is issued.
+      const clearNow = React.useCallback(() => {
+        seqRef.current.n += 1
+        if (dispatchInFlight.ctrl) {
+          try { dispatchInFlight.ctrl.abort() } catch {}
+          dispatchInFlight.ctrl = null
+        }
+        setWorkerIds([])
+        setFetchNonce((n) => n + 1)
+      }, [])
+      React.useEffect(() => {
+        if (typeof registerClear === 'function') registerClear(clearNow)
+        return () => { if (typeof registerClear === 'function') registerClear(null) }
+      }, [registerClear, clearNow])
+
+      React.useEffect(() => {
+        // No selection / non-assistant session: pure blank, no request (§1.2).
+        if (!selectedId || !isAssistant) { setWorkerIds([]); return () => {} }
+        // Issue ③ (plan step 4(a)#4): collapsing the lower panel must abort.
+        // Changing lowerCollapsed first runs the previous effect's cleanup,
+        // which sets disposed=true and aborts any in-flight request; a late
+        // response is therefore discarded. Keep already-fetched ids so expanding
+        // restores the original rows (step 5), then the next run re-fetches.
+        if (lowerCollapsed) return () => {}
+        let disposed = false
+        const expectedSelectedId = selectedId
+        const seq = ++seqRef.current.n
+        if (dispatchInFlight.ctrl) { try { dispatchInFlight.ctrl.abort() } catch {} }
+        const ctrl = new AbortController()
+        dispatchInFlight.ctrl = ctrl
+        ;(async () => {
+          const data = await fetchDispatchSessions(expectedSelectedId, ctrl.signal)
+          if (dispatchInFlight.ctrl === ctrl) dispatchInFlight.ctrl = null
+          // Four gates: alive + newest seq + still this session + still assistant.
+          if (disposed || seq !== seqRef.current.n) return
+          if (expectedSelectedId !== (selectedIdRef && selectedIdRef.current)) return
+          if (!isAssistant) return
+          setWorkerIds(data)
+        })()
+        return () => {
+          disposed = true
+          try { ctrl.abort() } catch {}
+          if (dispatchInFlight.ctrl === ctrl) dispatchInFlight.ctrl = null
+        }
+        // selectedIdRef is a stable ref (only its .current changes), kept in the
+        // deps so the gate closure always reads the latest value; fetchNonce is
+        // the explicit re-fetch trigger for repeated clicks on the same row (②).
+      }, [selectedId, isAssistant, selectedIdRef, fetchNonce, lowerCollapsed])
+
+      // Non-assistant mode (or no selection yet) is pure blank: no rows, no
+      // empty-state text, no request (the effect above already skipped it).
+      if (!selectedId || !isAssistant) return null
+
+      const byId = (sessions && sessions.byId) || {}
+      const archived = archivedIds || new Set()
+      const rows = []
+      for (const id of workerIds) {
+        if (typeof id !== 'string' || !id) continue
+        const row = byId[id]
+        if (!row || row.blank || row.origin === 'subagent' || archived.has(id)) continue
+        // Same dot logic as selectActivity (kept inline so the upper group's
+        // filtering/sorting/truncation semantics stay byte-for-byte unchanged).
+        const st = statuses && statuses.get ? statuses.get(id) : undefined
+        const running = (st && st.running !== undefined) ? st.running : row.running
+        const unread = !!(st && st.completionUnread === true)
+        const awaiting = !!(st && st.pendingInteraction !== undefined)
+        const state = awaiting ? 'awaiting' : (running ? 'ongoing' : (unread ? 'unread' : 'idle'))
+        rows.push({ id, state, label: sessionLabel(row, id) })
+      }
+
+      return h('div', { 'data-enkeep-dispatch-panel': true },
+        h('div', { 'data-enkeep-dispatch-head': true },
+          h('span', null, '当前对话的外派对话'),
+          h('span', { 'data-enkeep-dispatch-count': true }, rows.length + ' 条'),
+          h('button', {
+            type: 'button',
+            'data-enkeep-dispatch-toggle': true,
+            'aria-expanded': !lowerCollapsed,
+            title: lowerCollapsed ? '展开外派对话' : '收起外派对话',
+            'aria-label': lowerCollapsed ? '展开外派对话' : '收起外派对话',
+            onClick: onToggleLower,
+          }, h(HeaderIcon, { kind: lowerCollapsed ? 'expand' : 'collapse' }))),
+        !lowerCollapsed && (rows.length
+          ? h('div', { 'data-enkeep-dispatch-list': true }, rows.map((it) =>
+              h('div', { key: it.id, 'data-enkeep-dispatch-item': true },
+                h('button', {
+                  type: 'button',
+                  'data-enkeep-dispatch-main': true,
+                  title: it.label,
+                  onClick: () => openSession(it.id),
+                },
+                  h('span', { 'data-enkeep-dispatch-dot': it.state }),
+                  h('span', { 'data-enkeep-dispatch-label': true }, it.label)))))
+          : h('div', { 'data-enkeep-dispatch-empty': true }, '当前对话暂无外派')))
+    }
+
     // Above-composer dock: current-session plain label (left) + high-frequency
     // prompt buttons (right, same row). `useSessions`/`sessionId`/`useInput`/
     // `inputActions` are standard props auto-injected into session-scope slots.
@@ -1242,8 +1398,17 @@ window.__ModuleLoader__.load({
 
     function ActivityBar({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession, useSessions, useSessionStatus, useWorkspaces }) {
       const [collapsed, setCollapsed] = React.useState(false)
-      // 会话分组 Tab：第一"对话"、第二"外派任务"，默认第一（用户自己切过去看）。
-      const [activeTab, setActiveTab] = React.useState('conversations')
+      // 下区（当前对话的外派对话）独立收起态，与上区 collapsed 互不干扰。
+      const [lowerCollapsed, setLowerCollapsed] = React.useState(false)
+      // 下区唯一驱动源：selectedId。同步 ref 保证同一帧连点读到最新值；
+      // clearLower 由 DispatchPanel 注册，点击行时同步清空下区（防串数据第一道闸）。
+      const [selectedId, setSelectedId] = React.useState(null)
+      const selectedIdRef = React.useRef(null)
+      const clearLowerRef = React.useRef(null)
+      const registerLowerClear = React.useCallback((fn) => { clearLowerRef.current = fn }, [])
+      const clearLower = () => {
+        if (typeof clearLowerRef.current === 'function') clearLowerRef.current()
+      }
       const [sidebarHidden, setSidebarHidden] = React.useState(readSidebarHidden)
       const [, setTick] = React.useState(0)
       const [hours, setHours] = React.useState(24)
@@ -1510,13 +1675,46 @@ window.__ModuleLoader__.load({
       const ws = useWorkspaces ? useWorkspaces((s) => s) : undefined
       const archived = ws && ws.archivedSessionIds ? new Set(ws.archivedSessionIds) : new Set()
       const pinnedSet = new Set(pinned)
-      // selectActivity 返回两组；当前 Tab 决定渲染哪一组与头部计数。
+      // 上区原样：直接取 conversations 组（原 tab1），不改筛选/排序/截断。
       const groups = selectActivity(sessions, statuses, archived, hours, Date.now(), pinnedSet, itemLimit)
-      const items = groups[activeTab]
-      const hasItems = groups.conversations.length > 0 || groups.dispatch.length > 0
+      const items = groups.conversations
+      const hasItems = items.length > 0
 
-      // 只有两个 Tab 都空且无对话框时才整条隐藏；仅当前 Tab 空时显示空态。
-      if (!hasItems && !confirmArchive && !stopArchiveTarget && !archiveError && !renameTarget) return null
+      // 助手模式判定：只读 selectedId 对应行的 agentPreset；字段缺失安全降级为非助手。
+      // Issue ④: derive from the (s)=>s sessions snapshot already subscribed above
+      // instead of opening a second useSessions subscription for the same store.
+      const selectedRow = sessions && sessions.byId ? sessions.byId[selectedId] : undefined
+      const isAssistant = !!(selectedRow && selectedRow.projectionValues && selectedRow.projectionValues.agentPreset === 'dsh-assistant-main')
+
+      // 点击行：同一事件内先同步更新 selectedId + 清空下区，再异步打开会话。
+      // openSession 的完成不写回任何下区状态（selectedId 是下区唯一驱动源）。
+      const onSelectRow = (id) => {
+        selectedIdRef.current = id
+        setSelectedId(id)
+        clearLower()
+        openSession(id)
+      }
+
+      // derived current 校正：只在 current 本身变化时介入。初始化（selectedId 为空）
+      // 以 current 为准；外部切换/retainedBy 变化走与点击相同的 清空→重设→重取 路径。
+      const prevCurrentRef = React.useRef(undefined)
+      React.useEffect(() => {
+        const prev = prevCurrentRef.current
+        prevCurrentRef.current = groups.current
+        if (!groups.current) return
+        const adoptingInitial = !selectedIdRef.current
+        const correctedExternally = prev !== undefined && prev !== groups.current && selectedIdRef.current !== groups.current
+        if (!adoptingInitial && !correctedExternally) return
+        clearLower()
+        selectedIdRef.current = groups.current
+        setSelectedId(groups.current)
+      }, [groups.current])
+
+      // 整条隐藏：上区无条目、且下区未处于激活态、且无对话框时才隐藏。
+      // 步骤6(a)写「只看上区」，但同一步(c)#3 与矩阵 A15 明确要求「上区空、下区
+      // 有内容时活动区仍渲染」，故以验收矩阵为准：下区激活时也保留整条。
+      const lowerActive = !!(selectedId && isAssistant)
+      if (!hasItems && !lowerActive && !confirmArchive && !stopArchiveTarget && !archiveError && !renameTarget) return null
 
       return h('div', {
         'data-enkeep-activity-bar': true,
@@ -1529,17 +1727,6 @@ window.__ModuleLoader__.load({
           onPointerDown: onDragStart,
           onDoubleClick: resetPos,
         },
-          h('div', { 'data-enkeep-activity-tabs': true, role: 'tablist', 'aria-label': '会话分组' },
-            h('button', {
-              type: 'button', role: 'tab', 'data-enkeep-activity-tab': 'conversations',
-              'aria-selected': activeTab === 'conversations',
-              onClick: () => setActiveTab('conversations'),
-            }, '对话'),
-            h('button', {
-              type: 'button', role: 'tab', 'data-enkeep-activity-tab': 'dispatch',
-              'aria-selected': activeTab === 'dispatch',
-              onClick: () => setActiveTab('dispatch'),
-            }, '外派任务')),
           h('span', null, `${items.length} 个`),
           h('div', { 'data-enkeep-activity-actions': true },
             h('button', {
@@ -1581,47 +1768,61 @@ window.__ModuleLoader__.load({
               title: collapsed ? '展开会话列表' : '收起会话列表',
               'aria-label': collapsed ? '展开会话列表' : '收起会话列表',
             }, h(HeaderIcon, { kind: collapsed ? 'expand' : 'collapse' })))),
-        !collapsed && (items.length
-          ? items.map((it) =>
-              h('div', {
-                key: it.id,
-                'data-enkeep-activity-item': true,
-                'data-enkeep-pinned': it.pinned ? true : undefined,
-                'data-enkeep-current': it.current ? true : undefined,
-              },
-                h('button', {
-                  type: 'button',
-                  'data-enkeep-activity-main': true,
-                  title: it.label + (it.awaiting ? '（等待互动）' : '') + (it.current ? '（当前对话）' : ''),
-                  onClick: () => openSession(it.id),
+        h('div', { 'data-enkeep-activity-list': true },
+          !collapsed && (items.length
+            ? items.map((it) =>
+                h('div', {
+                  key: it.id,
+                  'data-enkeep-activity-item': true,
+                  'data-enkeep-pinned': it.pinned ? true : undefined,
+                  'data-enkeep-current': it.current ? true : undefined,
                 },
-                  h('span', { 'data-enkeep-dot': it.state }),
-                  h('span', { 'data-enkeep-activity-label': true }, it.label)),
-                h('div', { 'data-enkeep-activity-row-actions': true },
                   h('button', {
                     type: 'button',
-                    'data-enkeep-row-action': true,
-                    title: '重命名',
-                    'aria-label': '重命名',
-                    onClick: (e) => { e.stopPropagation(); askRename(it.id, it.rawTitle) },
-                  }, h(HeaderIcon, { kind: 'rename' })),
-                  h('button', {
-                    type: 'button',
-                    'data-enkeep-row-action': true,
-                    title: '归档',
-                    'aria-label': '归档',
-                    onClick: (e) => { e.stopPropagation(); askArchive(it.id, it.label) },
-                  }, h(HeaderIcon, { kind: 'archive' })),
-                  h('button', {
-                    type: 'button',
-                    'data-enkeep-row-action': true,
-                    'data-enkeep-row-pin': it.pinned ? true : undefined,
-                    title: it.pinned ? '取消置顶' : '置顶',
-                    'aria-label': it.pinned ? '取消置顶' : '置顶',
-                    onClick: (e) => { e.stopPropagation(); togglePin(it.id) },
-                  }, h(HeaderIcon, { kind: it.pinned ? 'unpin' : 'pin' })))))
-          : h('div', { 'data-enkeep-activity-empty': true },
-              activeTab === 'dispatch' ? '暂无外派任务' : '暂无活动会话')),
+                    'data-enkeep-activity-main': true,
+                    title: it.label + (it.awaiting ? '（等待互动）' : '') + (it.current ? '（当前对话）' : ''),
+                    onClick: () => onSelectRow(it.id),
+                  },
+                    h('span', { 'data-enkeep-dot': it.state }),
+                    h('span', { 'data-enkeep-activity-label': true }, it.label)),
+                  h('div', { 'data-enkeep-activity-row-actions': true },
+                    h('button', {
+                      type: 'button',
+                      'data-enkeep-row-action': true,
+                      title: '重命名',
+                      'aria-label': '重命名',
+                      onClick: (e) => { e.stopPropagation(); askRename(it.id, it.rawTitle) },
+                    }, h(HeaderIcon, { kind: 'rename' })),
+                    h('button', {
+                      type: 'button',
+                      'data-enkeep-row-action': true,
+                      title: '归档',
+                      'aria-label': '归档',
+                      onClick: (e) => { e.stopPropagation(); askArchive(it.id, it.label) },
+                    }, h(HeaderIcon, { kind: 'archive' })),
+                    h('button', {
+                      type: 'button',
+                      'data-enkeep-row-action': true,
+                      'data-enkeep-row-pin': it.pinned ? true : undefined,
+                      title: it.pinned ? '取消置顶' : '置顶',
+                      'aria-label': it.pinned ? '取消置顶' : '置顶',
+                      onClick: (e) => { e.stopPropagation(); togglePin(it.id) },
+                    }, h(HeaderIcon, { kind: it.pinned ? 'unpin' : 'pin' })))))
+            : h('div', { 'data-enkeep-activity-empty': true }, '暂无活动会话'))),
+        h(DispatchPanel, {
+          selectedId,
+          selectedIdRef,
+          isAssistant,
+          registerClear: registerLowerClear,
+          openSession,
+          // Issue ④: pass the already-subscribed snapshots down; DispatchPanel
+          // no longer opens its own broad (s)=>s subscriptions.
+          sessions,
+          statuses,
+          archivedIds: archived,
+          lowerCollapsed,
+          onToggleLower: () => setLowerCollapsed((v) => !v),
+        }),
         // Dialogs are portaled to document.body: the bar root carries a CSS
         // transform (drag offset), which would otherwise make position:fixed
         // resolve against the 300px bar instead of the viewport, and would trap
