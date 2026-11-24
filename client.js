@@ -113,28 +113,37 @@ window.__ModuleLoader__.load({
       'html [data-enkeep-sidebar-hidden] [data-enkeep-activity-bar]{',
       'right:calc(var(--dsh-sidebar-inline-padding, 12px) + 8px);}',
       '[data-enkeep-activity-head]{display:flex;align-items:center;gap:6px;',
-      'font-size:12px;opacity:.75;padding:0 2px 2px;cursor:move;user-select:none;}',
+      // opacity 作用于整棵子树且子元素无法撤销，故头部不再整体 .75 弱化——
+      // 这正是 Tab 文字（tertiary / business-primary）被二次压暗、看不清的根因。
+      // 计数与头部按钮各自补回 .75，保持原先的视觉层级，Tab 则全亮度显示。
+      'font-size:12px;opacity:1;padding:0 2px 2px;cursor:move;user-select:none;}',
+      '[data-enkeep-activity-head] > span{opacity:.75;}',
       // Dragging state: stronger shadow + grabbing cursor; transform is set inline
       // on the bar by the component (叠加在默认 CSS 定位之上).
       '[data-enkeep-activity-bar][data-dragging]{cursor:grabbing;',
       'box-shadow:0 10px 32px rgba(0,0,0,.42);transition:none;}',
       '[data-enkeep-activity-head] strong{font-weight:600;}',
       // 会话分组 Tab：第一"对话"、第二"外派任务"；与 header 的对话/轨迹 tab 完全独立。
-      // 视觉对齐主界面对话轨迹 tab（ConversationRoot 的 tab/tabActive）：纯文字 +
-      // 底部 2px 强调线，未选中 tertiary、选中 business-primary，不用胶囊底色。
+      // 可读性优先：旧版未选中用 tertiary（浅色主题本身 3.25:1），叠头部 .75 后仅 2.30:1；
+      // 选中 business-primary 叠 .75 后 2.59:1（浅色下纯色本身也仅 3.72:1），
+      // 这就是"暗淡、根本看不清"的根因。
+      // 现改为：未选中 secondary（浅色 5.09:1 / 深色 9.64:1），hover primary；
+      // 选中 business-primary 与 label-primary 混色——浅色自动压暗、深色自动提亮，
+      // 两种主题均 >6:1，同时保留蓝色语义与 2px 底部强调线。
+      // 与轨迹 tab"纯 business-primary 选中"的差异原因：该色在浅色主题对比度不足。
       '[data-enkeep-activity-tabs]{display:inline-flex;align-items:center;gap:16px;position:relative;}',
       '[data-enkeep-activity-tab]{border:0;background:transparent;',
-      'color:var(--dsw-alias-label-tertiary);font-size:13px;font-weight:500;line-height:16px;',
+      'color:var(--dsw-alias-label-secondary, #61666b);font-size:13px;font-weight:500;line-height:16px;',
       'padding:0 0 9px;position:relative;cursor:pointer;}',
       '[data-enkeep-activity-tab]::after{content:"";background:transparent;border-radius:2px;',
       'height:2px;position:absolute;bottom:-1px;left:0;right:0;}',
-      '[data-enkeep-activity-tab]:hover{color:var(--dsw-alias-label-secondary);}',
+      '[data-enkeep-activity-tab]:hover{color:var(--dsw-alias-label-primary, #0f1115);}',
       '[data-enkeep-activity-tab][aria-selected="true"]{',
-      'color:var(--dsw-alias-state-business-primary, #4c8bf5);}',
+      'color:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 65%, var(--dsw-alias-label-primary, #0f1115));}',
       '[data-enkeep-activity-tab][aria-selected="true"]::after{',
       'background:var(--dsw-alias-state-business-primary, #4c8bf5);}',
       '[data-enkeep-activity-empty]{padding:10px 8px;font-size:12px;opacity:.7;text-align:center;}',
-      '[data-enkeep-activity-actions]{display:flex;align-items:center;gap:2px;margin-left:auto;}',
+      '[data-enkeep-activity-actions]{display:flex;align-items:center;gap:2px;margin-left:auto;opacity:.75;}',
       // 所有头部按钮共用一个尺寸盒：22×22、15px SVG、无边框，保证视觉大小一致。
       '[data-enkeep-activity-action],[data-enkeep-activity-toggle]{',
       'border:0;background:transparent;color:inherit;cursor:pointer;',
