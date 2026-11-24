@@ -119,13 +119,20 @@ window.__ModuleLoader__.load({
       '[data-enkeep-activity-bar][data-dragging]{cursor:grabbing;',
       'box-shadow:0 10px 32px rgba(0,0,0,.42);transition:none;}',
       '[data-enkeep-activity-head] strong{font-weight:600;}',
-      // 活动区分组 Tab：第一"对话"、第二"外派任务"；与 header 的对话/轨迹 tab 完全独立。
-      '[data-enkeep-activity-tabs]{display:inline-flex;align-items:center;gap:2px;}',
-      '[data-enkeep-activity-tab]{border:0;background:transparent;color:inherit;',
-      'font-size:12px;padding:2px 6px;border-radius:5px;cursor:pointer;opacity:.7;}',
-      '[data-enkeep-activity-tab]:hover{background:var(--dsw-alias-bg-layer-3);}',
-      '[data-enkeep-activity-tab][aria-selected="true"]{opacity:1;font-weight:600;',
-      'background:var(--dsw-alias-bg-layer-3);}',
+      // 会话分组 Tab：第一"对话"、第二"外派任务"；与 header 的对话/轨迹 tab 完全独立。
+      // 视觉对齐主界面对话轨迹 tab（ConversationRoot 的 tab/tabActive）：纯文字 +
+      // 底部 2px 强调线，未选中 tertiary、选中 business-primary，不用胶囊底色。
+      '[data-enkeep-activity-tabs]{display:inline-flex;align-items:center;gap:16px;position:relative;}',
+      '[data-enkeep-activity-tab]{border:0;background:transparent;',
+      'color:var(--dsw-alias-label-tertiary);font-size:13px;font-weight:500;line-height:16px;',
+      'padding:0 0 9px;position:relative;cursor:pointer;}',
+      '[data-enkeep-activity-tab]::after{content:"";background:transparent;border-radius:2px;',
+      'height:2px;position:absolute;bottom:-1px;left:0;right:0;}',
+      '[data-enkeep-activity-tab]:hover{color:var(--dsw-alias-label-secondary);}',
+      '[data-enkeep-activity-tab][aria-selected="true"]{',
+      'color:var(--dsw-alias-state-business-primary, #4c8bf5);}',
+      '[data-enkeep-activity-tab][aria-selected="true"]::after{',
+      'background:var(--dsw-alias-state-business-primary, #4c8bf5);}',
       '[data-enkeep-activity-empty]{padding:10px 8px;font-size:12px;opacity:.7;text-align:center;}',
       '[data-enkeep-activity-actions]{display:flex;align-items:center;gap:2px;margin-left:auto;}',
       // 所有头部按钮共用一个尺寸盒：22×22、15px SVG、无边框，保证视觉大小一致。
@@ -684,7 +691,7 @@ window.__ModuleLoader__.load({
     // --- Activity selection (pure) -------------------------------------------
     // 三类命中任一即入选：N 小时内更新 / 运行中 / 未读完成(completionUnread)。
     // 排除 blank、subagent 子行、归档会话。返回按 updatedAt 倒序（最近活动在前）、Id 字典序兜底的有限列表。
-    // 活动区最多显示的会话数：默认 20，可被设置页 activityItemLimit 覆盖。
+    // 会话列表最多显示的会话数：默认 20，可被设置页 activityItemLimit 覆盖。
     // 筛选/排序逻辑：活动时间窗入选 + 按 updatedAt 倒序（Id 兜底） + 置顶优先。
     const DEFAULT_ITEM_LIMIT = 20
     const clampItemLimit = (n) => Number.isFinite(n) ? Math.max(1, Math.min(200, Math.trunc(n))) : DEFAULT_ITEM_LIMIT
@@ -1226,7 +1233,7 @@ window.__ModuleLoader__.load({
 
     function ActivityBar({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession, useSessions, useSessionStatus, useWorkspaces }) {
       const [collapsed, setCollapsed] = React.useState(false)
-      // 活动区分组 Tab：第一"对话"、第二"外派任务"，默认第一（用户自己切过去看）。
+      // 会话分组 Tab：第一"对话"、第二"外派任务"，默认第一（用户自己切过去看）。
       const [activeTab, setActiveTab] = React.useState('conversations')
       const [sidebarHidden, setSidebarHidden] = React.useState(readSidebarHidden)
       const [, setTick] = React.useState(0)
@@ -1513,8 +1520,8 @@ window.__ModuleLoader__.load({
           onPointerDown: onDragStart,
           onDoubleClick: resetPos,
         },
-          h('strong', null, '活动区'),
-          h('div', { 'data-enkeep-activity-tabs': true, role: 'tablist', 'aria-label': '活动区分组' },
+          h('strong', null, '会话'),
+          h('div', { 'data-enkeep-activity-tabs': true, role: 'tablist', 'aria-label': '会话分组' },
             h('button', {
               type: 'button', role: 'tab', 'data-enkeep-activity-tab': 'conversations',
               'aria-selected': activeTab === 'conversations',
@@ -1563,8 +1570,8 @@ window.__ModuleLoader__.load({
               type: 'button',
               'data-enkeep-activity-toggle': true,
               onClick: () => setCollapsed((v) => !v),
-              title: collapsed ? '展开活动区' : '收起活动区',
-              'aria-label': collapsed ? '展开活动区' : '收起活动区',
+              title: collapsed ? '展开会话列表' : '收起会话列表',
+              'aria-label': collapsed ? '展开会话列表' : '收起会话列表',
             }, h(HeaderIcon, { kind: collapsed ? 'expand' : 'collapse' })))),
         !collapsed && (items.length
           ? items.map((it) =>
@@ -2439,7 +2446,7 @@ window.__ModuleLoader__.load({
     const SETTINGS_TABS = [
       { id: 'prompts', label: '常用提示词' },
       { id: 'width', label: '聊天宽度' },
-      { id: 'activity', label: '活动区' },
+      { id: 'activity', label: '会话' },
       { id: 'display', label: '显示与快捷栏' },
     ]
 
@@ -2482,7 +2489,7 @@ window.__ModuleLoader__.load({
           h('p', { style: { fontSize: 12, opacity: 0.6, margin: 0 } }, `当前：${wide ? '宽屏' : '窄屏'}。设置保存在插件配置中，重启后保持。`))
       } else if (tab === 'activity') {
         pane = h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-          h('div', { style: { fontWeight: 600 } }, '活动区时间窗'),
+          h('div', { style: { fontWeight: 600 } }, '会话时间窗'),
           h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
             h('span', null, '时间窗（小时）'),
             h('input', {

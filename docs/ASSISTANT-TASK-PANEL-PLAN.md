@@ -3,7 +3,7 @@
 > 状态：方案（未实施）
 > 核查日期：2026-11-21
 > 代码范围：DSH Web 0.2.1-rc.2 本地安装包、`C:\dev\dsh-enkeep`、`C:\dev\dsh-assistant`
-> 方案落点：`dsh-assistant` 提供任务数据（Host），`dsh-enkeep` 提供面板与活动区过滤（Client）
+> 方案落点：`dsh-assistant` 提供任务数据（Host），`dsh-enkeep` 提供面板与会话列表过滤（Client）
 > 本文只规划步骤与内容，不包含工期估算。
 
 ---
@@ -13,9 +13,9 @@
 **方案本身可行，推荐做；但“只加一个任务面板”不足以达到目标，必须同时做两件事：**
 
 1. **修任务归属标记。** 现在 `assistant_dispatch` 实际没有把 `sourceSessionId` 写进任务记录：`index.js` 把 `toolHost` 传给 `mainTools`，而 `mainTools` 调的是 `host.sessionInfoFor(agent)`，`toolHost` 上没有这个方法，于是 `sessionInfo` 永远是 `{}`。核查时 `tasks.jsonl` 里的 7 个任务全部没有 `sourceSessionId`。不修这个，面板无法做到“只显示该助手会话创建的任务”。
-2. **活动区过滤是独立改动。** 面板只是多了一个查看入口，不会自动让活动区里的 worker 会话消失。必须在 `selectActivity()` 里排除 `da-worker-*` / `dsh-assistant-worker` 会话。
+2. **会话列表过滤是独立改动。** 面板只是多了一个查看入口，不会自动让会话列表里的 worker 会话消失。必须在 `selectActivity()` 里排除 `da-worker-*` / `dsh-assistant-worker` 会话。
 
-**另外要如实说明一个边界：** 本方案能清掉 **活动区（Enkeep 悬浮条）** 里的任务会话，但**不能清掉原生侧边栏**里的任务工作区/会话。原生侧边栏是否显示由 `dsh-client-ui-workspace` 的 `sessionVisible()` 决定，只排除 `origin === 'subagent'` 和空白会话；worker 会话没有这个标记，所以仍会以“任务工作区”的形式出现在侧边栏（默认折叠）。要彻底达到“主界面只显示助手对话”，还需要改 DSH Web 原生代码或改 worker 会话模型，属于另一件事。
+**另外要如实说明一个边界：** 本方案能清掉 **会话列表（Enkeep 悬浮条）** 里的任务会话，但**不能清掉原生侧边栏**里的任务工作区/会话。原生侧边栏是否显示由 `dsh-client-ui-workspace` 的 `sessionVisible()` 决定，只排除 `origin === 'subagent'` 和空白会话；worker 会话没有这个标记，所以仍会以“任务工作区”的形式出现在侧边栏（默认折叠）。要彻底达到“主界面只显示助手对话”，还需要改 DSH Web 原生代码或改 worker 会话模型，属于另一件事。
 
 **推荐架构：**
 
@@ -47,11 +47,11 @@ worker 会话由 `index.js` 的 `pump()` 创建：
 - 标题：`任务 <task id>`
 - 通过 `ctx.sessionController.create({ sessionId, workspaceId, agentPreset })` 创建
 
-因为每个任务的执行目录不同，`ensureAgent()` 会为每个目录 `ctx.workspaceRegistry.create(cwd)`，所以**每个任务会多出一个工作区**。这正是活动区和原生侧边栏被“任务”占满的直接原因。
+因为每个任务的执行目录不同，`ensureAgent()` 会为每个目录 `ctx.workspaceRegistry.create(cwd)`，所以**每个任务会多出一个工作区**。这正是会话列表和原生侧边栏被“任务”占满的直接原因。
 
-### 1.2 活动区为什么会显示这些任务
+### 1.2 会话列表为什么会显示这些任务
 
-活动区是 `dsh-enkeep` 的浮动 `ActivityBar`，注册在 `shell.overlay`，不是 DSH 原生视图。
+会话列表是 `dsh-enkeep` 的浮动 `ActivityBar`，注册在 `shell.overlay`，不是 DSH 原生视图。
 
 `client.js` 的 `selectActivity()` 当前规则：
 
@@ -69,7 +69,7 @@ worker 会话：
 - 通常是运行中或刚刚更新
 - 标题是 `任务 da-task-...`
 
-所以它们**必然进入活动区**。这就是用户看到“任务都显示在活动区”的原因。
+所以它们**必然进入会话列表**。这就是用户看到“任务都显示在会话列表”的原因。
 
 ### 1.3 原生侧边栏为什么也显示
 
@@ -87,7 +87,7 @@ worker 会话两者都不满足，且每个任务一个工作区，所以原生�
 - `conversation.session.header.actions`：会话标题旁的动作位，适合放“任务”入口按钮。
 - `ctx.configForms.get('enkeep')`：已有设置页读写通道；`Config` 字段全部 `.volatile()`，客户端写入不会被 Host 拒绝，改完即时生效。
 - `ctx.webServer.register({ kind: 'prefix', path, handler })`：Enkeep 已用这个模式提供 `/dsh-enkeep-words` 和 `/dsh-enkeep-skills`，并用自定义请求头挡住跨域页面。
-- `uiWorkspace.openSession(sessionId)`：Enkeep 已用这个公开方法从活动区打开会话，可复用来打开任务 worker 会话。
+- `uiWorkspace.openSession(sessionId)`：Enkeep 已用这个公开方法从会话列表打开会话，可复用来打开任务 worker 会话。
 
 ### 1.5 关键缺陷：`sourceSessionId` 实际没有写入
 
@@ -113,7 +113,7 @@ worker 会话两者都不满足，且每个任务一个工作区，所以原生�
 
 - 面板数据不能直接读 `tasks.jsonl`（Client 没有文件系统权限），必须有 Host 只读接口。
 - “只显示本会话任务”依赖 `sourceSessionId`，必须先修 1.5 的接线。
-- 活动区去重依赖 `selectActivity()` 过滤，和面板是两件独立的事。
+- 会话列表去重依赖 `selectActivity()` 过滤，和面板是两件独立的事。
 - 原生侧边栏的问题不在本方案范围内，不能承诺“主界面完全只剩助手对话”。
 
 ---
@@ -126,7 +126,7 @@ worker 会话两者都不满足，且每个任务一个工作区，所以原生�
 2. 展开后最多显示 N 个“最近任务”（N 默认 10，可在设置页改）。
 3. 只显示**当前助手会话派发**的任务，不串其他会话。
 4. 超过 N 个时提供“查看全部/历史”入口。
-5. 活动区不再显示助手自动创建的 worker 会话，避免两处重复。
+5. 会话列表不再显示助手自动创建的 worker 会话，避免两处重复。
 6. 收起时不轮询、不订阅；展开时能看到接近实时的状态。
 7. 配置热更新，不重启插件；展开状态按会话记忆。
 
@@ -168,7 +168,7 @@ worker 会话两者都不满足，且每个任务一个工作区，所以原生�
 职责划分：
 
 - `dsh-assistant`：任务数据的唯一权威，负责归属过滤、状态标签、响应裁剪。
-- `dsh-enkeep`：只负责展示、配置、活动区过滤；不复制任务状态机，不读任务文件。
+- `dsh-enkeep`：只负责展示、配置、会话列表过滤；不复制任务状态机，不读任务文件。
 - 两边通过一个很小的 JSON 契约耦合；路由不存在时面板自动隐藏，不影响 Enkeep 其他功能。
 
 **为什么不在 `dsh-assistant` 里做 Client 面板：**
@@ -247,7 +247,7 @@ Header: x-dsh-assistant-tasks: 1
 
 - 主标记：会话 id 前缀 `da-worker-`（`dsh-assistant` 已经把它作为 worker 的公开约定，`workerTaskId()` / `cancelWorker()` 都依赖它）。
 - 辅助标记：`projectionValues.agentPreset === 'dsh-assistant-worker'`。
-- 活动区过滤用“前缀命中 或 预设命中”；前缀是同步、稳定、冷启动也可用的，预设用于防御未来 id 规则变化。
+- 会话列表过滤用“前缀命中 或 预设命中”；前缀是同步、稳定、冷启动也可用的，预设用于防御未来 id 规则变化。
 - 这两个常量在 Enkeep 侧要加注释：必须与 `dsh-assistant` 的 `WORKER_PREFIX` / `WORKER_PRESET` 保持一致。
 
 ### 3.4 面板位置与交互
@@ -336,7 +336,7 @@ Header: x-dsh-assistant-tasks: 1
 - 不在收起态使用 `useSessions` 订阅会话状态；只在组件内用两个窄选择器读 `preset` / `blank`，这两个值变化频率低，不构成轮询。
 - 如果未来并排显示两个助理会话且都展开，各自轮询；2.5 秒 + 单飞 + 可见性暂停足以控制，必要时再加“同一页面共享一个轮询器”的优化。
 
-### 3.7 活动区过滤（与面板去重）
+### 3.7 会话列表过滤（与面板去重）
 
 在 `selectActivity()` 中新增一个纯过滤条件：
 
@@ -355,16 +355,16 @@ function isAssistantWorkerSession(id, row) {
 
 - `hideAssistantTaskSessions !== false` 时，排除 assistant worker 会话。
 - 例外 1：`pinned` 的 worker 会话保留——用户显式置顶，说明想常显。
-- 例外 2：当前正在查看的 worker 会话保留——否则用户从面板打开任务后，活动区里找不到它，无法确认自己在哪个任务会话；离开后自然消失。
+- 例外 2：当前正在查看的 worker 会话保留——否则用户从面板打开任务后，会话列表里找不到它，无法确认自己在哪个任务会话；离开后自然消失。
 - 当前会话的判断沿用现有 `retainedBy.mainView > 0` 的数据源，不新增全局状态。
 - 归档优先级不变：归档会话即使置顶也不显示。
-- 主助理会话本身**不**过滤：它是真实对话，必须留在活动区，用户才能回到助手。
+- 主助理会话本身**不**过滤：它是真实对话，必须留在会话列表，用户才能回到助手。
 - 配置 `hideAssistantTaskSessions` 默认 `true`；设为 `false` 可回退到旧行为，便于排查。
 
 效果：
 
-- 活动区只剩：主助理会话 + 用户自己的正常会话（+ 置顶/当前例外）。
-- 任务状态统一在助手对话内的面板查看、打开，不再和活动区重复。
+- 会话列表只剩：主助理会话 + 用户自己的正常会话（+ 置顶/当前例外）。
+- 任务状态统一在助手对话内的面板查看、打开，不再和会话列表重复。
 - 这不改变原生侧边栏；侧边栏仍是“所有会话”的管理面。
 
 ### 3.8 配置项、设置页与热更新
@@ -386,18 +386,18 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 
 - 复选框“在助手会话输入框上方显示任务面板”
 - 数字输入“最近任务数量 N（1–30）”
-- 复选框“活动区隐藏后台任务会话”
+- 复选框“会话列表隐藏后台任务会话”
 - 说明文字：
   - “面板只显示当前助手会话派发的任务。”
   - “收起时不轮询；展开后每 2.5 秒刷新。”
-  - “活动区过滤不影响原生侧边栏。”
+  - “会话列表过滤不影响原生侧边栏。”
 
 热更新：
 
 - `volatile()` 字段由 Client `configForms` 写入，Host 接受并触发 `loader/volatile-update`，不需要重启。
 - 面板订阅 `form.subscribe`，N 改变时立即按新 N 重新请求/裁剪。
 - `showTaskPanel` 改变时动态注册/注销 slot（参照现有 `showCommonWords` 的 `sync` 模式），不留下空组件。
-- `hideAssistantTaskSessions` 改变时活动区立即重算。
+- `hideAssistantTaskSessions` 改变时会话列表立即重算。
 - 默认值写在 `Config` 和 `cordis.patch.yml`；本机 profile 的 patch 没有这些键也没关系，Schemastery 会用默认值填充。若运维希望显式固化，可在 profile patch 的 `enkeep.config` 补三行。
 
 ### 3.9 折叠状态记忆
@@ -417,11 +417,11 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 
 ### 4.1 正面影响
 
-- **活动区回归“会话导航”本职**：不再被几十个 `任务 da-task-...` 行淹没。
-- **任务状态有固定归宿**：助手对话内一处查看，和对话上下文绑定，不需要在活动区/侧边栏之间找。
+- **会话列表回归“会话导航”本职**：不再被几十个 `任务 da-task-...` 行淹没。
+- **任务状态有固定归宿**：助手对话内一处查看，和对话上下文绑定，不需要在会话列表/侧边栏之间找。
 - **改动是增量的**：新 slot、新只读路由、新配置字段；不修改官方 Web 源码，不改任务状态机。
 - **权限边界清晰**：面板只读，不能派活/取消/回答，危险操作仍走现有工具与人工确认。
-- **可回退**：`showTaskPanel=false` 隐藏面板；`hideAssistantTaskSessions=false` 恢复旧活动区；路由存在但不被调用时无副作用。
+- **可回退**：`showTaskPanel=false` 隐藏面板；`hideAssistantTaskSessions=false` 恢复旧会话列表；路由存在但不被调用时无副作用。
 - **顺带修复一个真实缺陷**：归属字段修好后，结果能回到派发会话，`allowedWorkspaces` 也开始真正生效。
 
 ### 4.2 风险与缓解
@@ -431,7 +431,7 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 | `sourceSessionId` 仍为空 | 面板无任务或串任务 | 先修 `toolHost` 接线；路由对旧任务做 canonical 兼容；加端到端验收 |
 | 修复归属字段让 `allowedWorkspaces` 真正生效 | 原先能派活的工作区可能被拒 | 这是预期的安全修复；上线前用空/非空白名单各回归一次；在变更说明里写清楚 |
 | Enkeep 依赖 assistant 路由/常量 | 版本不匹配时面板失效 | 路由 404 → 隐藏面板并 warn；前缀/预设双条件；配置开关可关 |
-| 冷会话缺少 `projectionValues.agentPreset` | 活动区过滤漏掉某些 worker | 以 `da-worker-` 前缀为主标记；预设为辅；测试重启后的冷会话 |
+| 冷会话缺少 `projectionValues.agentPreset` | 会话列表过滤漏掉某些 worker | 以 `da-worker-` 前缀为主标记；预设为辅；测试重启后的冷会话 |
 | 过滤掉用户想看的 worker 会话 | 用户找不到任务会话 | 当前会话/置顶例外；面板“打开”入口；关闭开关可回退 |
 | 轮询增加负载 | 多面板/后台标签页耗电 | 仅展开时轮询；2.5s；单飞；页面隐藏暂停；历史视图不自动轮询 |
 | 面板过高挤占对话 | 输入框被推远 | `max-height: min(46vh, 420px)` + 内部滚动；收起态仅一行 |
@@ -557,14 +557,14 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 
 ---
 
-### 步骤 4：活动区过滤 + 配置/设置页
+### 步骤 4：会话列表过滤 + 配置/设置页
 
 **完成什么**
 
 - `selectActivity()` 增加 assistant worker 过滤，带当前/置顶例外。
 - `ActivityBar` 订阅 `hideAssistantTaskSessions`，即时重算。
 - `Config` 增加三个字段并全部 `.volatile()`。
-- 设置页新增“任务面板”tab，包含显示开关、N、活动区过滤开关。
+- 设置页新增“任务面板”tab，包含显示开关、N、会话列表过滤开关。
 - 更新 `cordis.patch.yml` 默认值；更新 Host 的 volatile 诊断日志。
 
 **用什么技术**
@@ -575,19 +575,19 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 
 **验收什么**
 
-- 活动区不再出现 `任务 da-task-...` 的 worker 会话。
+- 会话列表不再出现 `任务 da-task-...` 的 worker 会话。
 - 主助理会话、用户正常会话、运行中/未读会话仍正常显示。
 - 置顶一个 worker 会话 → 它重新出现；取消置顶 → 消失。
 - 从面板打开一个 worker 会话 → 它在当前会话期间可见；离开后消失。
-- 关闭“活动区隐藏后台任务会话” → 恢复旧行为。
+- 关闭“会话列表隐藏后台任务会话” → 恢复旧行为。
 - 设置页改动即时生效，刷新页面后保持；不需要重启插件。
 - 冷启动（重启 DSH Web）后过滤仍生效。
 
 **什么标准算成功**
 
-- 活动区截图对比：过滤前有 N 个任务行，过滤后只剩助手/正常会话。
+- 会话列表截图对比：过滤前有 N 个任务行，过滤后只剩助手/正常会话。
 - 置顶、当前、归档、切换开关四个边界都符合预期。
-- 没有新增定时器；活动区原有 60 秒重算逻辑不变。
+- 没有新增定时器；会话列表原有 60 秒重算逻辑不变。
 
 ---
 
@@ -624,8 +624,8 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 
 **什么标准算成功**
 
-- 用户不打开活动区也能在助手对话里看到任务并打开任务会话。
-- 不存在两个入口同时显示同一任务状态的情况（活动区已过滤）。
+- 用户不打开会话列表也能在助手对话里看到任务并打开任务会话。
+- 不存在两个入口同时显示同一任务状态的情况（会话列表已过滤）。
 - 面板不遮挡输入框，长列表内部滚动。
 
 ---
@@ -673,7 +673,7 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 - 设置页读写三个字段；非法值 clamp 到默认/边界。
 - 折叠状态按会话写入 `dsh.enkeep.taskpanel.open.v1`，默认收起，最多 100 个键。
 - 更新 `docs/ASSISTANT-TASK-PANEL-PLAN.md`（本文）、`README`/`cordis.patch.yml` 的必要说明。
-- 回归清单：活动区、面板、路由、配置、冷启动、旧任务、白名单。
+- 回归清单：会话列表、面板、路由、配置、冷启动、旧任务、白名单。
 
 **用什么技术**
 
@@ -690,13 +690,13 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 - 刷新浏览器：配置值保留（Host 配置），展开状态保留（localStorage）。
 - 清空 localStorage：全部回到默认收起，不报错。
 - 旧任务（无 `sourceSessionId`）只在 canonical 主会话显示；新任务按会话正确隔离。
-- 冷启动后：活动区过滤、面板、路由均正常；旧任务仍可见（canonical）。
+- 冷启动后：会话列表过滤、面板、路由均正常；旧任务仍可见（canonical）。
 
 **什么标准算成功**
 
 - 所有配置改动无需重启；状态行为与 3.9 一致。
 - 回归清单全部通过；没有任务数据被迁移/删除。
-- 回退开关有效：`showTaskPanel=false` + `hideAssistantTaskSessions=false` 即回到旧行为（面板不显示、活动区恢复）。
+- 回退开关有效：`showTaskPanel=false` + `hideAssistantTaskSessions=false` 即回到旧行为（面板不显示、会话列表恢复）。
 
 ---
 
@@ -706,7 +706,7 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 |---|---|---|
 | 1) 任务归属/来源标记，只显示该助手会话自动创建的任务 | 3.3；修 `toolHost`；`sourceSessionId`；旧任务 canonical 兼容 | 步骤 1、2、3、7 |
 | 2) 超过 N 个有“查看全部/历史”入口 | 3.5；历史视图分页/筛选 | 步骤 6 |
-| 3) 与活动区的关系，避免两处重复显示 | 3.7；`selectActivity` 过滤 worker；面板唯一任务入口 | 步骤 4、5 |
+| 3) 与会话列表的关系，避免两处重复显示 | 3.7；`selectActivity` 过滤 worker；面板唯一任务入口 | 步骤 4、5 |
 | 4) 实时性：展开快照/刷新，收起不订阅省性能 | 3.6；展开 2.5s 轮询，收起零轮询，可见性暂停 | 步骤 6 |
 | 5) 配置下发：N 放哪、热更新还是重启 | 3.8；Enkeep `Config.taskPanelLimit`（volatile）+ 设置页 | 步骤 4、7 |
 | 6) 折叠状态是否记忆 | 3.9；按会话 localStorage，默认收起 | 步骤 7 |
@@ -730,10 +730,10 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 3. 派发 3 个任务，确认 `tasks.jsonl` 新记录包含 `sourceSessionId`。
 4. 展开面板：看到最近任务；运行中状态在 3 秒内变化。
 5. 点击“打开”：进入对应 `da-worker-*` 会话；返回主会话后面板仍在。
-6. 检查活动区：无 worker 会话；主会话仍可见；置顶/当前例外符合预期。
+6. 检查会话列表：无 worker 会话；主会话仍可见；置顶/当前例外符合预期。
 7. 在另一个 main-preset 会话派发任务：该会话面板只显示自己的任务；主会话不显示它。
 8. 刷新页面、重启 Web：配置、折叠状态、过滤、旧任务兼容均正常。
-9. 关闭两个开关：面板消失、活动区恢复旧行为；重新打开恢复。
+9. 关闭两个开关：面板消失、会话列表恢复旧行为；重新打开恢复。
 10. 白名单场景：空名单允许；非空名单只允许指定 cwd，拒绝有中文原因。
 
 ### 7.3 浏览器验收点
@@ -750,7 +750,7 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 ## 8. 回滚与运维
 
 - **只关面板**：设置页关闭“显示任务面板”，或配置 `showTaskPanel: false`。路由保留但不再被调用。
-- **恢复活动区旧行为**：设置页关闭“活动区隐藏后台任务会话”，或配置 `hideAssistantTaskSessions: false`。
+- **恢复会话列表旧行为**：设置页关闭“会话列表隐藏后台任务会话”，或配置 `hideAssistantTaskSessions: false`。
 - **完全回滚**：撤销 Enkeep 的 slot 注册/过滤/配置字段，撤销 dsh-assistant 路由；任务数据不需要迁移。
 - **归属字段修复不回滚**：`sourceSessionId` 是结果投递正确性的基础修复，建议保留；若必须回滚，需同时接受结果回到主会话的旧行为。
 - **旧任务兼容**：路由的 canonical 兼容规则是只读的，不写文件；将来确认无旧任务后可删除该分支。
@@ -761,9 +761,9 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 
 1. **原生侧边栏是否也要隐藏任务工作区？**
    - 若“是”，需要另立方案：改 DSH Web 的会话可见性，或把 worker 改成 subagent。本文不覆盖。
-   - 若“否”，本文方案即可解决活动区重复显示。
-2. **当前/置顶 worker 会话是否保留在活动区？**
-   - 推荐保留（否则用户从面板打开任务后无法在活动区识别当前会话）。
+   - 若“否”，本文方案即可解决会话列表重复显示。
+2. **当前/置顶 worker 会话是否保留在会话列表？**
+   - 推荐保留（否则用户从面板打开任务后无法在会话列表识别当前会话）。
 3. **历史视图是否需要自动刷新？**
    - 推荐不自动刷新，手动“刷新”；最近视图自动轮询。
 4. **面板是否只在 canonical `dsh-assistant-main` 显示，还是所有 main-preset 会话都显示？**
@@ -803,10 +803,10 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 - `C:\dev\dsh-enkeep\client.js`
   - `MAX_ITEMS`：约 679 行
   - `selectActivity()`：约 692–736 行
-  - 活动区 slot 注册：约 2531–2549 行
+  - 会话列表 slot 注册：约 2531–2549 行
   - `conversation.input.dock` 现有 last-prompt 注册：约 2553–2557 行
   - 设置 tab 定义：约 2265–2270 行
-  - 活动区设置页：约 2307–2319 行
+  - 会话列表设置页：约 2307–2319 行
   - 设置页 `set()` / `choice()` 模式：约 2285–2294 行
 - `C:\dev\dsh-enkeep\index.js`
   - `Config`：约 29–39 行
@@ -814,7 +814,7 @@ hideAssistantTaskSessions: Schema.boolean().default(true).volatile(),
 - `C:\dev\dsh-enkeep\cordis.patch.yml`
   - 当前配置默认值：1–9 行
 - `C:\dev\dsh-enkeep\docs\ACTIVITY-BAR-PLAN.md`
-  - 活动区现有设计说明
+  - 会话列表现有设计说明
 
 ### DSH Web（只读核查，不修改）
 

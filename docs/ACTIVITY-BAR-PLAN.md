@@ -1,4 +1,4 @@
-# dsh-enkeep「活动区」常驻悬浮切换条 — 实施方案
+# dsh-enkeep「会话」常驻悬浮切换条 — 实施方案
 
 > 状态：用户已确认方向（2026-11-19），待按第五节开发计划实施
 > 基线：DSH `0.2.1-rc.2`；插件 `dsh-enkeep@0.1.0`（bundle skeleton，来源 `git+https://github.com/80779898/dsh-enkeep.git`，不锁 SHA）
@@ -9,7 +9,7 @@
 
 ## 一、需求（已与用户逐项确认）
 
-同一个插件里的**第三个需求**。现状：侧栏"工作区"把所有会话按目录（工作区）分组、树型堆叠。用户要新增一个**活动区**：把"当前值得关注的少数会话"用一条**始终悬浮的切换条**常驻展示。
+同一个插件里的**第三个需求**。现状：侧栏"工作区"把所有会话按目录（工作区）分组、树型堆叠。用户要新增一个**会话列表**：把"当前值得关注的少数会话"用一条**始终悬浮的切换条**常驻展示。
 
 | 决策点 | 确认结果 |
 |---|---|
@@ -84,15 +84,15 @@ shell.overlay 槽位组件 ActivityBar
   - 四个头部按钮（新建 / 工作区 / 设置 / 收起）统一为 22×22 尺寸盒 + 15px 内联 SVG（统一 viewBox 16×16、stroke 1.5），保证视觉大小一致；字符符号因字形差异大小不一，已弃用。收起/展开改用同尺寸上/下箭头图标。
   - `＋` 新建对话：`ctx.get('uiWorkspace').startSession()`——官方公开方法，与侧栏 Ctrl+N 同一实现。
   - `⊞` 新建工作区：`uiWorkspace.pickDirectory()` → `workspaces.create({ path })`；侧栏的 `addRequested` 流程是私有 store、无法外部触发，这两个公开方法效果等价（选目录→纳入工作区）。
-  - `⚙` 设置：`ctx.get('layout').selectPanel('enkeep')` 打开本插件配置面板（全局设置面板无公开外部入口；强用 settings.launcher 单槽会挤掉账户菜单，故不改）。Enkeep 面板已含宽窄切换 + 活动区时间窗输入，作为单一配置页。
+  - `⚙` 设置：`ctx.get('layout').selectPanel('enkeep')` 打开本插件配置面板（全局设置面板无公开外部入口；强用 settings.launcher 单槽会挤掉账户菜单，故不改）。Enkeep 面板已含宽窄切换 + 会话时间窗输入，作为单一配置页。
   - 三个服务均 `ctx.get` + 可选链 + try/catch 兜底，缺失只 `console.warn`，不抛错。
 - 定时刷新：`useEffect` 内 `setInterval`（60_000ms）触发 `setTick(n=>n+1)` 让时间窗口随时间失效，卸载时 `clearInterval`；另监听 `window.focus` 重算。
 
 ### 3.3.1 输入框上方"当前对话"横条（用户 2026-11-19 追加）
 
 - **位置**：注册到 `conversation.input.dock` slot（`list` 类型、session scope），渲染在 composer 输入框正上方——与 `dsh-git-panel` 的分支 chip 同一 slot（`dsh-git-panel/lib/client.js:3990`）。只借位置，**不做下拉**（用户明确"他那个是下来，我们不要下来"）。
-- **内容**：与活动区当前项**完全一致**的 label（`dir: title`），复用同一个纯函数 `sessionLabel(row, id)`（活动区与横条共用，避免重复）；**不带"当前"徽标、不带状态圆点**。
-- **当前对话定位**：用 session scope 标准 prop `sessionId`（渲染器注入，见 `dsh-client-ui-renderer/lib/client.js:696-699` + `dsh-client-ui-session/lib/client.js:758`），配合 root 标准 hook `useSessions` 取 `byId[sessionId]`——比活动区用 `mainView` 推断更直接精确。两者都是标准 props，无需 service inject。
+- **内容**：与会话列表当前项**完全一致**的 label（`dir: title`），复用同一个纯函数 `sessionLabel(row, id)`（会话列表与横条共用，避免重复）；**不带"当前"徽标、不带状态圆点**。
+- **当前对话定位**：用 session scope 标准 prop `sessionId`（渲染器注入，见 `dsh-client-ui-renderer/lib/client.js:696-699` + `dsh-client-ui-session/lib/client.js:758`），配合 root 标准 hook `useSessions` 取 `byId[sessionId]`——比会话列表用 `mainView` 推断更直接精确。两者都是标准 props，无需 service inject。
 - **宽度随内容**：chip `width:auto; max-width:100%` + 文字 ellipsis；外层与官方一致 `max-width:var(--dsh-composer-card-max-width,800px); margin:0 auto`，不占满整行、不固定 220px。
 - **纯展示**：无点击、无下拉、无 service 调用；row 缺失或 label 空则返回 `null`。独立 `<style data-plugin-css="enkeep-current">`，随 entry 生命周期 dispose。
 - **审核**：位置/内容/宽度/无下拉/无重复/标准 props 可用/样式隔离均确认；取舍——未复制列表的状态圆点（那是状态标识，非"当前标识"，且需额外 `useSessionStatus`）。
