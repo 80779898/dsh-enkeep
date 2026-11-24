@@ -140,6 +140,11 @@ window.__ModuleLoader__.load({
       '[data-enkeep-dispatch-item]{display:flex;align-items:center;width:100%;',
       'border-radius:6px;color:inherit;font-size:12px;}',
       '[data-enkeep-dispatch-item]:hover{background:var(--dsw-alias-bg-layer-3);}',
+      // 当前外派：背景 + 左侧强调条，与 hover 区分；点击外派只切换高亮，
+      // 上区助手对话与下区列表都保持不动（见 derived-current 校正的 worker 分支）。
+      '[data-enkeep-dispatch-item][data-enkeep-dispatch-current]{',
+      'background:var(--dsw-alias-bg-layer-2);',
+      'box-shadow:inset 2px 0 0 var(--dsw-alias-state-success-primary, #35b37e);}',
       '[data-enkeep-dispatch-main]{display:flex;align-items:center;gap:8px;',
       'flex:1 1 auto;min-width:0;text-align:left;border:0;border-radius:6px;',
       'padding:5px 8px;background:transparent;color:inherit;cursor:pointer;',
@@ -776,11 +781,13 @@ window.__ModuleLoader__.load({
         // rawTitle is the actual session title (no directory prefix) — used by the
         // rename dialog so editing never bakes "dir: " into the stored title.
         const rawTitle = (row.title && row.title.trim()) || row.displayTitle || id
-        // 外派会话分到第二 Tab；当前/置顶会话是例外，仍留在第一 Tab（对话）。
+        // 外派会话只在下区「当前对话的外派对话」展示，不进上区对话列表——
+        // 上区是纯助手/普通对话，避免点外派后上区多出一条、或误把它当主对话。
         // current 沿用上面按 retainedBy.mainView 推出的值，不引入新的全局状态。
         const isCurrent = id === current
-        const dispatch = isAssistantWorkerSession(id, row) && !isPinned && !isCurrent
-        out.push({ id, state, awaiting, current: isCurrent, pinned: isPinned, dispatch, label: sessionLabel(row, id), rawTitle, updatedAt: row.updatedAt || 0 })
+        const isWorker = isAssistantWorkerSession(id, row)
+        const dispatch = isWorker && !isPinned && !isCurrent
+        out.push({ id, state, awaiting, current: isCurrent, pinned: isPinned, dispatch, isWorker, label: sessionLabel(row, id), rawTitle, updatedAt: row.updatedAt || 0 })
       }
       // 排序分两段：置顶区在前，普通区在后；各自按 updatedAt 倒序（最近活动在前），
       // updatedAt 相同时以不可变的 id（session-<uuid>）字典序兜底，保证结果稳定。
@@ -796,7 +803,8 @@ window.__ModuleLoader__.load({
         return pinnedRows.concat(normalRows).slice(0, limit)
       }
       return {
-        conversations: take(out.filter((r) => !r.dispatch)),
+        // 上区只留非外派会话（外派一律走下区，置顶/当前例外也一并排除）。
+        conversations: take(out.filter((r) => !r.isWorker)),
         dispatch: take(out.filter((r) => r.dispatch)),
         // Derived current (retainedBy.mainView > 0) is published for the lower
         // panel's selection reconciliation; the two groups above are untouched.
@@ -1092,7 +1100,8 @@ window.__ModuleLoader__.load({
     }
 
     function DispatchPanel({ selectedId, selectedIdRef, isAssistant, registerClear,
-      openSession, sessions, statuses, archivedIds, lowerCollapsed, onToggleLower }) {
+      sessions, statuses, archivedIds, lowerCollapsed, onToggleLower, itemLimit,
+      activeWorkerId, onOpenWorker }) {
       // Issue ④: sessions/statuses snapshots are subscribed ONCE in ActivityBar
       // and passed down. A child re-renders together with its parent, so the
       // cross-render result is byte-for-byte identical without two extra (s)=>s
@@ -1163,8 +1172,12 @@ window.__ModuleLoader__.load({
       const byId = (sessions && sessions.byId) || {}
       const archived = archivedIds || new Set()
       const rows = []
+      // 外派列表同样受配置页「最多显示会话数」限制：与 selectActivity 共用
+      // clampItemLimit（1~200，非法回退 20），达到上限即停止收录。
+      const limit = clampItemLimit(itemLimit)
       for (const id of workerIds) {
         if (typeof id !== 'string' || !id) continue
+        if (rows.length >= limit) break
         const row = byId[id]
         if (!row || row.blank || row.origin === 'subagent' || archived.has(id)) continue
         // Same dot logic as selectActivity (kept inline so the upper group's
@@ -1191,12 +1204,16 @@ window.__ModuleLoader__.load({
           }, h(HeaderIcon, { kind: lowerCollapsed ? 'expand' : 'collapse' }))),
         !lowerCollapsed && (rows.length
           ? h('div', { 'data-enkeep-dispatch-list': true }, rows.map((it) =>
-              h('div', { key: it.id, 'data-enkeep-dispatch-item': true },
+              h('div', {
+                key: it.id,
+                'data-enkeep-dispatch-item': true,
+                'data-enkeep-dispatch-current': it.id === activeWorkerId ? true : undefined,
+              },
                 h('button', {
                   type: 'button',
                   'data-enkeep-dispatch-main': true,
                   title: it.label,
-                  onClick: () => openSession(it.id),
+                  onClick: () => onOpenWorker(it.id),
                 },
                   h('span', { 'data-enkeep-dispatch-dot': it.state }),
                   h('span', { 'data-enkeep-dispatch-label': true }, it.label)))))
@@ -1404,6 +1421,9 @@ window.__ModuleLoader__.load({
       // clearLower 由 DispatchPanel 注册，点击行时同步清空下区（防串数据第一道闸）。
       const [selectedId, setSelectedId] = React.useState(null)
       const selectedIdRef = React.useRef(null)
+      // 下区「当前外派」与 selectedId（助手对话）解耦：点击外派只改高亮、打开会话，
+      // 不动上区选中态也不清下区列表，保证在一个助手对话下能连续查看全部外派。
+      const [activeWorkerId, setActiveWorkerId] = React.useState(null)
       const clearLowerRef = React.useRef(null)
       const registerLowerClear = React.useCallback((fn) => { clearLowerRef.current = fn }, [])
       const clearLower = () => {
@@ -1691,17 +1711,36 @@ window.__ModuleLoader__.load({
       const onSelectRow = (id) => {
         selectedIdRef.current = id
         setSelectedId(id)
+        setActiveWorkerId(null) // 换助手对话：旧外派高亮失效，等下区重取后按 current 重定
         clearLower()
+        openSession(id)
+      }
+
+      // 点击下区外派：只记高亮 + 打开会话；selectedId 保持不变、下区不清空。
+      // openSession 会把主界面 current 切到 worker，下面的校正逻辑识别 worker 后不再
+      // 改写 selectedId，从而保住上区助手对话与整张外派列表。
+      const onOpenWorker = (id) => {
+        setActiveWorkerId(id)
         openSession(id)
       }
 
       // derived current 校正：只在 current 本身变化时介入。初始化（selectedId 为空）
       // 以 current 为准；外部切换/retainedBy 变化走与点击相同的 清空→重设→重取 路径。
+      // 例外：current 是外派 worker 会话时（点外派或从侧栏切到 worker），上区助手
+      // 对话与下区列表都保持不动，只把高亮同步到该 worker。
       const prevCurrentRef = React.useRef(undefined)
       React.useEffect(() => {
         const prev = prevCurrentRef.current
         prevCurrentRef.current = groups.current
         if (!groups.current) return
+        const currentRow = sessions && sessions.byId ? sessions.byId[groups.current] : undefined
+        if (isAssistantWorkerSession(groups.current, currentRow)) {
+          setActiveWorkerId(groups.current)
+          return
+        }
+        // mainView 回到非 worker（如从官方侧栏点回同一助手、或 worker 被关闭/归档）时
+        // 一律清外派高亮；否则下面两个早退分支会让绿高亮残留、与主界面不符。
+        setActiveWorkerId(null)
         const adoptingInitial = !selectedIdRef.current
         const correctedExternally = prev !== undefined && prev !== groups.current && selectedIdRef.current !== groups.current
         if (!adoptingInitial && !correctedExternally) return
@@ -1713,7 +1752,11 @@ window.__ModuleLoader__.load({
       // 整条隐藏：上区无条目、且下区未处于激活态、且无对话框时才隐藏。
       // 步骤6(a)写「只看上区」，但同一步(c)#3 与矩阵 A15 明确要求「上区空、下区
       // 有内容时活动区仍渲染」，故以验收矩阵为准：下区激活时也保留整条。
-      const lowerActive = !!(selectedId && isAssistant)
+      const currentWorkerRow = groups.current && sessions && sessions.byId ? sessions.byId[groups.current] : undefined
+      // 冷启动恰好停在 worker 会话时 selectedId 仍为空、下区不渲染，但整条活动区必须
+      // 保留（否则用户失去新建/设置入口）——把 worker current 一并算作激活态。
+      const workerCurrentActive = !!(groups.current && isAssistantWorkerSession(groups.current, currentWorkerRow))
+      const lowerActive = !!(selectedId && isAssistant) || workerCurrentActive
       if (!hasItems && !lowerActive && !confirmArchive && !stopArchiveTarget && !archiveError && !renameTarget) return null
 
       return h('div', {
@@ -1727,6 +1770,10 @@ window.__ModuleLoader__.load({
           onPointerDown: onDragStart,
           onDoubleClick: resetPos,
         },
+          // 分栏后原「对话 / 外派任务」tab 外壳整体移除，但头部名字也一并消失、
+          // 只剩计数。补回上区名字标签（CSS 的 [data-enkeep-activity-head] strong
+          // 规则仍在，span 计数保持 .75 弱化）——上区即对话列表，故名字为「对话」。
+          h('strong', null, '对话'),
           h('span', null, `${items.length} 个`),
           h('div', { 'data-enkeep-activity-actions': true },
             h('button', {
@@ -1775,12 +1822,19 @@ window.__ModuleLoader__.load({
                   key: it.id,
                   'data-enkeep-activity-item': true,
                   'data-enkeep-pinned': it.pinned ? true : undefined,
-                  'data-enkeep-current': it.current ? true : undefined,
+                  // 单一高亮源：优先 selectedId（下区驱动的助手对话），未选时退回 current。
+                  // 不用 OR —— 从侧栏切到另一个助手而 openSession 未落地时，OR 会让旧 current
+                  // 与新 selectedId 同帧双高亮；单一源始终只亮一行。
+                  'data-enkeep-current': it.id === (selectedId || groups.current) ? true : undefined,
                 },
                   h('button', {
                     type: 'button',
                     'data-enkeep-activity-main': true,
-                    title: it.label + (it.awaiting ? '（等待互动）' : '') + (it.current ? '（当前对话）' : ''),
+                    // tooltip 与高亮同源：点外派后 mainView 是 worker，被驱动的助手标
+                    // 「外派来源对话」，真正 mainView 的助手才标「当前对话」。
+                    title: it.label + (it.awaiting ? '（等待互动）' : '')
+                      + (it.id !== (selectedId || groups.current) ? ''
+                        : (it.current ? '（当前对话）' : '（外派来源对话）')),
                     onClick: () => onSelectRow(it.id),
                   },
                     h('span', { 'data-enkeep-dot': it.state }),
@@ -1814,7 +1868,6 @@ window.__ModuleLoader__.load({
           selectedIdRef,
           isAssistant,
           registerClear: registerLowerClear,
-          openSession,
           // Issue ④: pass the already-subscribed snapshots down; DispatchPanel
           // no longer opens its own broad (s)=>s subscriptions.
           sessions,
@@ -1822,6 +1875,11 @@ window.__ModuleLoader__.load({
           archivedIds: archived,
           lowerCollapsed,
           onToggleLower: () => setLowerCollapsed((v) => !v),
+          // 与配置页「最多显示会话数」同源（ActivityBar 已订阅该字段）。
+          itemLimit,
+          // 当前外派高亮 + 点击处理：不动 selectedId、不清空下区列表。
+          activeWorkerId,
+          onOpenWorker,
         }),
         // Dialogs are portaled to document.body: the bar root carries a CSS
         // transform (drag offset), which would otherwise make position:fixed
@@ -2718,7 +2776,7 @@ window.__ModuleLoader__.load({
                 if (Number.isFinite(n) && n >= 1 && n <= 200) set('activityItemLimit', Math.trunc(n))
               },
             }),
-            h('span', { style: { fontSize: 12, opacity: 0.6 } }, '每个 Tab 最多列出 N 个会话（置顶优先，仍计入名额；合计最多 2N）')))
+            h('span', { style: { fontSize: 12, opacity: 0.6 } }, '上区对话、下区外派各最多列出 N 个会话（置顶优先，仍计入名额；合计最多 2N）')))
       } else {
         pane = h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
           h('div', { style: { fontWeight: 600 } }, '显示与快捷栏'),

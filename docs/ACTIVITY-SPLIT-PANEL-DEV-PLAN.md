@@ -132,10 +132,10 @@
 
 **(a) 完成什么（功能 + 技术）**
 
-- 新增 module-scope 稳定的 `DispatchPanel` 组件（放 `client.js` 内，与 `ActivityBar` 同层），props 至少含：`selectedId`、`isAssistant`、`clearLower`（清空注册/通知）、`openSession`、`useSessions`。
+- 新增 module-scope 稳定的 `DispatchPanel` 组件（放 `client.js` 内，与 `ActivityBar` 同层），props 至少含：`selectedId`、`isAssistant`、`clearLower`（清空注册/通知）、`useSessions`；后续扩展增加 `itemLimit`、`activeWorkerId`、`onOpenWorker`（原 `openSession` prop 已移除，见文末实施补充）。
 - 用步骤 1 的接口取 `workerSessionIds`：同源相对路径 fetch + 自定义头 `x-dsh-assistant-sessions: 1` + `cache:'no-store'`；**沿用 `AssistantTaskStats` 的单飞 / seqRef / AbortController 三件套**（`client.js:970-1037`），封装成与选中态绑定的取数函数（守卫细节见步骤 4）。
 - **交叉渲染**：`const sessions = useSessions((s)=>s)`；`workerSessionIds.map(id => byId[id])` 过滤掉未命中/归档/`blank`/`origin==='subagent'` 的行（与 `selectActivity` 的剔除口径一致）；按 `sessionLabel(row,id)` 取标题、按现有 `state` 判定逻辑取圆点；渲染为下区列表条目，使用**独立** `data-enkeep-dispatch-item` / `data-enkeep-dispatch-dot` 等属性（不与上区 `data-enkeep-activity-*` 混用，便于验收与样式隔离）。
-- 下区条目点击仍走 `openSession(workerId)`；条目上不渲染置顶/归档/重命名等行操作（外派条目只读展示 + 打开）。
+- 下区条目点击走 `onOpenWorker(workerId)`（现由 ActivityBar 提供：只同步外派高亮 + 打开会话，**不改 selectedId、不清空下区列表**）；条目上不渲染置顶/归档/重命名等行操作（外派条目只读展示 + 打开）。
 - 未命中 `useSessions` 的 workerSessionId（会话未加载/已归档）跳过，不显示占位；最终命中数为 0 时进入空态（步骤 5）。
 - 面板标题固定为「当前对话的外派对话」，头部显示命中条数（如「2 条」）。
 
@@ -280,7 +280,7 @@
 ## 6. 风险与边界（实现时必须处理）
 
 - **legacy 任务**：无 `sourceSessionId` 的任务必须显式排除（truthy 前置判断 + 严格相等），不可用 `ownedBy` 的 fail-open；否则会串进每个会话。
-- **置顶/当前 worker 例外**：`selectActivity` 中 pinned/current 的 worker 会话仍留在上区 conversations 组；下区按 `sourceSessionId` 独立取数，不受该例外影响。同一 worker 会话可能同时出现在上区（置顶/当前例外）与下区，这是**已知行为，不是 bug**，需在验收说明中写明。
+- **worker 只出现在下区**：`selectActivity` 用 `isWorker` 标记把**所有**外派会话（含置顶/当前）从上区 conversations 组排除（`conversations = out.filter(r => !r.isWorker)`）；下区按 `sourceSessionId` 独立取数。同一 worker 不会同时出现在上下两区。`current` 仍遍历全部 ids（含 worker）是有意为之，供 derived-current 校正识别 mainView 是否已切到 worker。**早期版本曾让置顶/当前 worker 留在上区，已被用户新要求取消**（见文末实施补充）。
 - **workerSessionId 一致性**：接口返回值必须与 `useSessions` 中实际 worker 会话 id 完全一致（现行 `da-worker-<taskId>` 约定）；不一致会导致下区交叉渲染为空，步骤 1/A1 必须对齐验证。
 - **归档/未加载会话**：`useSessions` 中不可见的 worker 会话被跳过，下区条数可能少于任务数；验收口径以「`useSessions` 可见集合」为准。
 - **openSession 异步滞后**：点击行打开会话是异步的，下区切换不得依赖其完成；`selectedId` 是下区的唯一驱动源。
@@ -296,3 +296,16 @@
 | `C:\dev\dsh-assistant\index.js`（或同插件 `src/` 新增小模块） | 新增软挂载只读 `GET /dsh-assistant-tasks/sessions`（仅回 workerSessionId），从 `engine.tasks` 按 `sourceSessionId` 严格过滤；软依赖 webServer + disposer | 步骤 1 |
 | `C:\dev\dsh-enkeep\client.js` | `selectActivity` 返回 `current`；`ActivityBar` 增 `selectedId`/ref、清空逻辑、去 tab、上下分栏 DOM；新增 `DispatchPanel` 与取数封装（单飞/seqRef/abort）；`ACTIVITY_CSS` 增 `data-enkeep-dispatch-*` 规则；`shell.overlay` 注册保持 additive 不变 | 步骤 2–6 |
 | `C:\dev\dsh-enkeep\docs\ACTIVITY-SPLIT-PANEL-DEV-PLAN.md` | 本文件（唯一事实源） | 全部 |
+
+---
+
+## 8. 实施后用户补充改动（后续批次，已落地）
+
+用户在本计划实施完成后追加四项 UX 要求，均在 `client.js` 落地（与上面步骤的初始实现有差异，以本节为准）：
+
+1. **上区头部名字**：分栏移除 tab 外壳时名字一并消失，补回 `h('strong', null, '对话')`；复用既有 `[data-enkeep-activity-head] strong` CSS，span 计数仍 `.75` 弱化。
+2. **下区外派列表受数量配置约束**：`DispatchPanel` 新增 `itemLimit` prop，取 `ActivityBar` 已订阅的配置字段 `activityItemLimit`（与 `selectActivity` 共用 `clampItemLimit`，1~200、非法回退 20），按有效行截断。
+3. **点外派不清下区、上区助手对话不变**：新增 `activeWorkerId` state 与 `onOpenWorker`（只设高亮 + `openSession`，不动 `selectedId`、不 `clearLower`）；derived-current 校正遇到 worker current 只同步高亮；`current` 回到非 worker 一律清高亮（防侧栏点回同一助手时绿高亮残留）。下区项用 `data-enkeep-dispatch-current` 做背景 + 左侧强调条高亮。
+4. **外派会话不出现在上区**：`selectActivity` 加 `isWorker` 标记，`conversations` 过滤掉全部 worker（含置顶/当前，取消早期「置顶/当前 worker 留在上区」的已知行为）。上区「当前」高亮改为单一源 `it.id === (selectedId || groups.current)`，tooltip 区分「当前对话」/「外派来源对话」。冷启动停在 worker 且上区空时，整条活动区仍保留（保留新建/设置入口）。
+
+> `selectActivity` 返回的 `dispatch` 字段仍保留但未删除：当前无人读取，属早期 tab2 遗留死代码（保留未删以免扩大改动面）。`docs/ACTIVITY-LIMIT-PLAN.md` 记录上区上限的初始规划（已标"已实施"），下区复用同一配置见本节第 2 点。
