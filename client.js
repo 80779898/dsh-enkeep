@@ -164,6 +164,14 @@ window.__ModuleLoader__.load({
       '@media (prefers-reduced-motion: reduce){',
       '[data-enkeep-dispatch-dot="ongoing"]{animation:none;}}',
       '[data-enkeep-activity-empty]{padding:10px 8px;font-size:12px;opacity:.7;text-align:center;}',
+      '[data-enkeep-activity-tabs]{display:flex;align-items:center;gap:6px;margin-right:6px;}',
+      '[data-enkeep-activity-tab]{border:0;background:transparent;color:inherit;cursor:pointer;font-size:12px;padding:2px 4px;border-radius:4px;opacity:.7;}',
+      '[data-enkeep-activity-tab][data-active]{opacity:1;font-weight:600;background:var(--dsw-alias-bg-layer-3);}',
+      '[data-enkeep-activity-workspace]{display:flex;align-items:center;gap:8px;width:100%;border:0;border-radius:6px;padding:5px 8px;background:transparent;color:inherit;cursor:pointer;font-size:12px;text-align:left;}',
+      '[data-enkeep-activity-workspace]:hover{background:var(--dsw-alias-bg-layer-3);}',
+      '[data-enkeep-activity-workspace][data-selected]{background:var(--dsw-alias-bg-layer-3);}',
+      '[data-enkeep-workspace-label]{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '[data-enkeep-workspace-count]{opacity:.6;font-size:11px;}',
       '[data-enkeep-activity-actions]{display:flex;align-items:center;gap:2px;margin-left:auto;opacity:.75;}',
       // 所有头部按钮共用一个尺寸盒：22×22、15px SVG、无边框，保证视觉大小一致。
       '[data-enkeep-activity-action],[data-enkeep-activity-toggle]{',
@@ -1537,6 +1545,9 @@ window.__ModuleLoader__.load({
     }
 
     function ActivityBar({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession, useSessions, useSessionStatus, useWorkspaces }) {
+      // 活动区 tab：第一个是对话（原列表），第二个是工作区；选中态只影响 +A/+S 新会话目录。
+      const [activityTab, setActivityTab] = React.useState('conversations')
+      const [selectedWorkspaceId, setSelectedWorkspaceId] = React.useState(null)
       const [collapsed, setCollapsed] = React.useState(false)
       // 下区（当前对话的外派对话）独立收起态，与上区 collapsed 互不干扰。
       const [lowerCollapsed, setLowerCollapsed] = React.useState(false)
@@ -1831,6 +1842,27 @@ window.__ModuleLoader__.load({
       const items = groups.conversations
       const hasItems = items.length > 0
 
+      // 工作区 tab：排除派任务目录（固定前缀与 dsh-assistant 约定一致）。
+      // 工作区项字段：workspaceId / path / title / sessionIds / createdAt（无 label）。
+      const TASK_DIR_PREFIX = 'da-task-'
+      const baseName = (p) => String(p || '').split(/[\\/]/).pop() || ''
+      // 原始工作区数量用于"是否显示活动区"判断：即使全部是任务目录（过滤后为空），
+      // 也必须保留 +A/+S 与新增工作区入口，否则用户无法新增工作区。
+      const hasAnyWorkspace = !!(ws && Array.isArray(ws.items) && ws.items.length)
+      const workspaceItems = (ws && Array.isArray(ws.items) ? ws.items : []).filter((w) => !baseName(w && w.path).startsWith(TASK_DIR_PREFIX))
+      const workspaceListNode = !collapsed ? (workspaceItems.length
+        ? workspaceItems.map((w) => h('button', {
+          key: w.workspaceId,
+          type: 'button',
+          'data-enkeep-activity-workspace': true,
+          'data-selected': selectedWorkspaceId === w.workspaceId ? true : undefined,
+          title: String(w && w.path || ''),
+          onClick: () => setSelectedWorkspaceId(w.workspaceId),
+        },
+          h('span', { 'data-enkeep-workspace-label': true }, String(w && w.title || baseName(w && w.path))),
+          h('span', { 'data-enkeep-workspace-count': true }, String((w && w.sessionIds || []).length))))
+        : h('div', { 'data-enkeep-activity-empty': true }, '暂无工作区（可用头部 + 新增）')) : null
+
       // 助手模式判定：只读 selectedId 对应行的 agentPreset；字段缺失安全降级为非助手。
       // Issue ④: derive from the (s)=>s sessions snapshot already subscribed above
       // instead of opening a second useSessions subscription for the same store.
@@ -1888,7 +1920,9 @@ window.__ModuleLoader__.load({
       // 保留（否则用户失去新建/设置入口）——把 worker current 一并算作激活态。
       const workerCurrentActive = !!(groups.current && isAssistantWorkerSession(groups.current, currentWorkerRow))
       const lowerActive = !!(selectedId && isAssistant) || workerCurrentActive
-      if (!hasItems && !lowerActive && !confirmArchive && !stopArchiveTarget && !archiveError && !renameTarget) return null
+      // 工作区 tab 必须有入口：即使对话列表为空，只要有工作区就保留整条活动区，
+      // 否则 tab 与 +A/+S 一起消失，用户无法查看/新增工作区。
+      if (!hasItems && !hasAnyWorkspace && !lowerActive && !confirmArchive && !stopArchiveTarget && !archiveError && !renameTarget) return null
 
       return h('div', {
         'data-enkeep-activity-bar': true,
@@ -1901,11 +1935,22 @@ window.__ModuleLoader__.load({
           onPointerDown: onDragStart,
           onDoubleClick: resetPos,
         },
-          // 分栏后原「对话 / 外派任务」tab 外壳整体移除，但头部名字也一并消失、
-          // 只剩计数。补回上区名字标签（CSS 的 [data-enkeep-activity-head] strong
-          // 规则仍在，span 计数保持 .75 弱化）——上区即对话列表，故名字为「对话」。
-          h('strong', null, '对话'),
-          h('span', null, `${items.length} 个`),
+          // 活动区 tab：对话（原列表，默认）/ 工作区（排除派任务目录）。
+          // 计数跟随当前 tab；头部按钮行在两 tab 下均保留。
+          h('div', { 'data-enkeep-activity-tabs': true },
+            h('button', {
+              type: 'button',
+              'data-enkeep-activity-tab': true,
+              'data-active': activityTab === 'conversations' ? true : undefined,
+              onClick: () => setActivityTab('conversations'),
+            }, '对话'),
+            h('button', {
+              type: 'button',
+              'data-enkeep-activity-tab': true,
+              'data-active': activityTab === 'workspaces' ? true : undefined,
+              onClick: () => setActivityTab('workspaces'),
+            }, '工作区')),
+          h('span', null, `${activityTab === 'workspaces' ? workspaceItems.length : items.length} 个`),
           h('div', { 'data-enkeep-activity-actions': true },
             h('button', {
               type: 'button',
@@ -1919,10 +1964,18 @@ window.__ModuleLoader__.load({
               type: 'button',
               'data-enkeep-activity-action': true,
               disabled: busy,
-              title: '新建对话',
-              'aria-label': '新建对话',
-              onClick: runAction(newSession),
-            }, h(HeaderIcon, { kind: 'new' })),
+              title: '新建助手模式对话',
+              'aria-label': '新建助手模式对话',
+              onClick: runAction(() => newSession('dsh-assistant-main', selectedWorkspaceId)),
+            }, '+A'),
+            h('button', {
+              type: 'button',
+              'data-enkeep-activity-action': true,
+              disabled: busy,
+              title: '新建标准模式对话',
+              'aria-label': '新建标准模式对话',
+              onClick: runAction(() => newSession('standard', selectedWorkspaceId)),
+            }, '+S'),
             h('button', {
               type: 'button',
               'data-enkeep-activity-action': true,
@@ -1947,7 +2000,7 @@ window.__ModuleLoader__.load({
               'aria-label': collapsed ? '展开会话列表' : '收起会话列表',
             }, h(HeaderIcon, { kind: collapsed ? 'expand' : 'collapse' })))),
         h('div', { 'data-enkeep-activity-list': true },
-          !collapsed && (items.length
+          activityTab === 'workspaces' ? workspaceListNode : (!collapsed && (items.length
             ? items.map((it) =>
                 h('div', {
                   key: it.id,
@@ -1993,7 +2046,7 @@ window.__ModuleLoader__.load({
                       'aria-label': it.pinned ? '取消置顶' : '置顶',
                       onClick: (e) => { e.stopPropagation(); togglePin(it.id) },
                     }, h(HeaderIcon, { kind: it.pinned ? 'unpin' : 'pin' })))))
-            : h('div', { 'data-enkeep-activity-empty': true }, '暂无活动会话'))),
+            : h('div', { 'data-enkeep-activity-empty': true }, '暂无活动会话')))),
         h(DispatchPanel, {
           selectedId,
           selectedIdRef,
@@ -3076,10 +3129,17 @@ window.__ModuleLoader__.load({
             }
           }
           // New session: same public call the sidebar's Ctrl+N uses.
-          const newSession = () => {
+          // Optional preset starts the session under a specific agent preset;
+          // optional workspaceId pins the new session to the selected workspace.
+          // No-arg keeps the original dsh-default behaviour (backwards compatible).
+          const newSession = (preset, workspaceId) => {
             const uiWorkspace = get('uiWorkspace')
-            if (uiWorkspace && typeof uiWorkspace.startSession === 'function') uiWorkspace.startSession()
-            else console.warn('[enkeep] uiWorkspace.startSession unavailable')
+            if (uiWorkspace && typeof uiWorkspace.startSession === 'function') {
+              if (preset) {
+                if (workspaceId) uiWorkspace.startSession(workspaceId, { agentPreset: preset })
+                else uiWorkspace.startSession(undefined, { agentPreset: preset })
+              } else uiWorkspace.startSession()
+            } else console.warn('[enkeep] uiWorkspace.startSession unavailable')
           }
           // Add workspace: the sidebar's addRequested flow is private; these two
           // documented public calls produce the same result (pick dir -> adopt it).
