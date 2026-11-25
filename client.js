@@ -750,7 +750,7 @@ window.__ModuleLoader__.load({
       const preset = row && row.projectionValues && row.projectionValues.agentPreset
       return preset === 'dsh-assistant-worker'
     }
-    function selectActivity(sessions, statuses, archivedIds, hours, now, pinnedSet, itemLimit) {
+    function selectActivity(sessions, statuses, archivedIds, hours, now, pinnedSet, itemLimit, activeDerived) {
       const byId = (sessions && sessions.byId) || {}
       const ids = (sessions && sessions.ids) || []
       const archived = archivedIds || new Set()
@@ -774,14 +774,19 @@ window.__ModuleLoader__.load({
         // 等待用户交互（审批/提问/计划审查）是独立于 running 的官方状态：
         // 此时会话语义上已暂停，但 running 可能仍为 true。漏读它会误画绿脉冲。
         const awaiting = !!(st && st.pendingInteraction !== undefined)
+        // 活跃派生任务：主会话自身可能已停（running=false），但仍有 worker 在跑。
+        // 数据源是 dsh-assistant 的只读 ?all=1 映射；只认 active/waiting > 0。
+        const d = (activeDerived && activeDerived[id]) || null
+        const hasActiveDerived = !!(d && ((d.active > 0) || (d.waiting > 0)))
         const recent = (now - (row.updatedAt || 0)) <= winMs
         const isPinned = pinned.has(id)
         // 归档/subagent/blank 已在上面剔除（归档优先：即使置顶也不显示）。
-        // 置顶会话锁定常显；等待互动的会话即使超时也保留——两者都需要用户注意。
-        if (!running && !unread && !recent && !isPinned && !awaiting) continue
-        // state 决定圆点：等待互动 > 运行中 > 完成未看 > 完成已看(未超时)。
+        // 置顶会话锁定常显；等待互动、有活跃派生的会话即使超时也保留——都需要用户注意。
+        if (!running && !unread && !recent && !isPinned && !awaiting && !hasActiveDerived) continue
+        // state 决定圆点：等待互动 > 运行中 > 完成未看 > 有活跃派生 > 完成已看(未超时)。
+        // 只把原本会是 idle 的行提升为 ongoing；awaiting/ongoing/unread 一律不被覆盖。
         // current 是叠加维度（当前通常也是运行中），单独标记。
-        const state = awaiting ? 'awaiting' : (running ? 'ongoing' : (unread ? 'unread' : 'idle'))
+        const state = awaiting ? 'awaiting' : (running ? 'ongoing' : (unread ? 'unread' : (hasActiveDerived ? 'ongoing' : 'idle')))
         // rawTitle is the actual session title (no directory prefix) — used by the
         // rename dialog so editing never bakes "dir: " into the stored title.
         const rawTitle = (row.title && row.title.trim()) || row.displayTitle || id
@@ -791,19 +796,22 @@ window.__ModuleLoader__.load({
         const isCurrent = id === current
         const isWorker = isAssistantWorkerSession(id, row)
         const dispatch = isWorker && !isPinned && !isCurrent
-        out.push({ id, state, awaiting, current: isCurrent, pinned: isPinned, dispatch, isWorker, label: sessionLabel(row, id), rawTitle, updatedAt: row.updatedAt || 0 })
+        out.push({ id, state, awaiting, current: isCurrent, pinned: isPinned, dispatch, isWorker, activeDerived: hasActiveDerived, label: sessionLabel(row, id), rawTitle, updatedAt: row.updatedAt || 0 })
       }
       // 排序分两段：置顶区在前，普通区在后；各自按 updatedAt 倒序（最近活动在前），
       // updatedAt 相同时以不可变的 id（session-<uuid>）字典序兜底，保证结果稳定。
       // current 只作高亮/徽标，不排序。
       const byRecentOrder = (a, b) => (b.updatedAt - a.updatedAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+      // 有活跃派生的会话即使 updatedAt 较旧也要排在普通组前面，否则截断时
+      // 会被更新的会话挤掉，用户看不到它仍在运行（状态提升被抵消）。
+      const byAttention = (a, b) => (Number(!!b.activeDerived) - Number(!!a.activeDerived)) || byRecentOrder(a, b)
       // per-Tab 截断（已拍板的新语义）：先按 dispatch 分成两组，每组各自
-      // "置顶优先 + updatedAt 倒序"，再各自截 N —— 合计最多 2N。
+      // "置顶优先 + 有活跃派生优先 + updatedAt 倒序"，再各自截 N —— 合计最多 2N。
       // 置顶仍计入所在 Tab 的名额；这与旧的"全区合计 N"语义不同。
       const limit = clampItemLimit(itemLimit)
       const take = (rows) => {
         const pinnedRows = rows.filter((r) => r.pinned).sort(byRecentOrder)
-        const normalRows = rows.filter((r) => !r.pinned).sort(byRecentOrder)
+        const normalRows = rows.filter((r) => !r.pinned).sort(byAttention)
         return pinnedRows.concat(normalRows).slice(0, limit)
       }
       return {
@@ -1077,6 +1085,86 @@ window.__ModuleLoader__.load({
         h('span', { 'data-enkeep-taskstats-label': true }, label))
     }
 
+    // --- Active-derived sessions store (read-only ?all=1 stats) ---------------
+    // One factory-scope singleton shared by every ActivityBar: a single 5s poll
+    // fetches per-source-session ACTIVE derived-task counts, so an assistant row
+    // whose own agent stopped can still show as ongoing while its workers run.
+    // Same single-flight / seq / abort / visibility discipline as AssistantTaskStats.
+    const DERIVED_ALL_URL = '/dsh-assistant-tasks/stats?all=1'
+    const derivedAllSeq = { n: 0 }
+    const derivedAllInFlight = { ctrl: null }
+    const EMPTY_DERIVED = { sessions: {} }
+
+    function createDerivedActivityStore() {
+      let state = EMPTY_DERIVED
+      const listeners = new Set()
+      const getSnapshot = () => state
+      const subscribe = (fn) => { listeners.add(fn); return () => listeners.delete(fn) }
+      const commit = (next) => { state = next; for (const fn of listeners) fn() }
+
+      async function fetchAll(signal) {
+        try {
+          const res = await fetch(DERIVED_ALL_URL, {
+            headers: { [TASKSTATS_HEADER]: '1' }, cache: 'no-store', signal,
+          })
+          if (!res || !res.ok) return EMPTY_DERIVED
+          const data = await res.json()
+          if (!data || data.ok !== true || !data.sessions || typeof data.sessions !== 'object' || Array.isArray(data.sessions)) return EMPTY_DERIVED
+          const sessions = {}
+          for (const sid of Object.keys(data.sessions)) {
+            const row = data.sessions[sid]
+            if (!row || typeof row !== 'object') continue
+            const active = Number.isFinite(row.active) ? Math.max(0, Math.trunc(row.active)) : 0
+            const waiting = Number.isFinite(row.waiting) ? Math.max(0, Math.trunc(row.waiting)) : 0
+            if (active > 0 || waiting > 0) sessions[sid] = { active, waiting }
+          }
+          return { sessions }
+        } catch (e) {
+          // Abort / 404 / assistant absent → no highlight (supported state).
+          return EMPTY_DERIVED
+        }
+      }
+
+      let started = false
+      const start = () => {
+        if (started || typeof document === 'undefined' || typeof fetch !== 'function') return () => {}
+        started = true
+        let timer = null
+        let ownCtrl = null
+        let disposed = false
+        const tick = async () => {
+          if (disposed || derivedAllInFlight.ctrl) return  // single flight
+          const seq = ++derivedAllSeq.n
+          const ctrl = new AbortController()
+          derivedAllInFlight.ctrl = ctrl
+          ownCtrl = ctrl
+          const data = await fetchAll(ctrl.signal)
+          if (derivedAllInFlight.ctrl === ctrl) derivedAllInFlight.ctrl = null
+          if (!disposed && seq === derivedAllSeq.n) commit(data)
+        }
+        const onVisible = () => {
+          if (document.hidden) {
+            if (timer) { clearInterval(timer); timer = null }
+            if (ownCtrl) { ownCtrl.abort(); ownCtrl = null }
+          } else {
+            tick()
+            if (!timer) timer = setInterval(tick, TASKSTATS_POLL_MS)
+          }
+        }
+        tick()  // first fetch on mount
+        if (!document.hidden && !timer) timer = setInterval(tick, TASKSTATS_POLL_MS)
+        document.addEventListener('visibilitychange', onVisible)
+        return () => {
+          disposed = true
+          if (timer) { clearInterval(timer); timer = null }
+          if (ownCtrl) { ownCtrl.abort(); ownCtrl = null }
+          document.removeEventListener('visibilitychange', onVisible)
+          started = false
+        }
+      }
+      return { subscribe, getSnapshot, start }
+    }
+
     // --- Lower panel: read-only sessions bridge + cross-render ----------------
     // Data comes from dsh-assistant's soft-mounted GET /dsh-assistant-tasks/sessions
     // behind a custom header. Same factory-scope single-flight / seq / abort
@@ -1168,6 +1256,7 @@ window.__ModuleLoader__.load({
         // deps so the gate closure always reads the latest value; fetchNonce is
         // the explicit re-fetch trigger for repeated clicks on the same row (②).
       }, [selectedId, isAssistant, selectedIdRef, fetchNonce, lowerCollapsed])
+
 
       // Non-assistant mode (or no selection yet) is pure blank: no rows, no
       // empty-state text, no request (the effect above already skipped it).
@@ -1698,13 +1787,18 @@ window.__ModuleLoader__.load({
         } finally { busyRef.current = false; setBusy(false) }
       }
 
+      // 活跃派生会话映射（只读 ?all=1）：挂载即启动单例轮询，订阅快照传给 selectActivity。
+      React.useEffect(() => derivedActivityStore.start(), [])
+      const derivedState = useExternalStore(derivedActivityStore)
+      const activeDerived = derivedState && derivedState.sessions ? derivedState.sessions : null
+
       const sessions = useSessions ? useSessions((s) => s) : undefined
       const statuses = useSessionStatus ? useSessionStatus((s) => s) : undefined
       const ws = useWorkspaces ? useWorkspaces((s) => s) : undefined
       const archived = ws && ws.archivedSessionIds ? new Set(ws.archivedSessionIds) : new Set()
       const pinnedSet = new Set(pinned)
       // 上区原样：直接取 conversations 组（原 tab1），不改筛选/排序/截断。
-      const groups = selectActivity(sessions, statuses, archived, hours, Date.now(), pinnedSet, itemLimit)
+      const groups = selectActivity(sessions, statuses, archived, hours, Date.now(), pinnedSet, itemLimit, activeDerived)
       const items = groups.conversations
       const hasItems = items.length > 0
 
@@ -2287,6 +2381,7 @@ window.__ModuleLoader__.load({
       return { subscribe, getSnapshot, registerInserter, insert, insertContent, upsert, remove, resetCount, resetAllCounts, setMode, addToGlobal }
     }
     const wordStore = createWordStore()
+    const derivedActivityStore = createDerivedActivityStore()
 
     // --- Skill quick-pick: read-only fetch of installed skills -------------
     // All logic lives in enkeep itself (no skill-picker plugin, no fork). The
@@ -2318,7 +2413,7 @@ window.__ModuleLoader__.load({
 
     // Subscribe helper: prefer React's native external-store hook when available;
     // the fallback works on any React 18 without that export.
-    function useWordStore(store) {
+    function useExternalStore(store) {
       if (typeof React.useSyncExternalStore === 'function') {
         return React.useSyncExternalStore(store.subscribe, store.getSnapshot)
       }
@@ -2390,7 +2485,7 @@ window.__ModuleLoader__.load({
       const [skills, setSkills] = React.useState([])
       const [skillsLoading, setSkillsLoading] = React.useState(false)
       const [skillsRefresh, setSkillsRefresh] = React.useState(0)
-      const state = useWordStore(wordStore)
+      const state = useExternalStore(wordStore)
       const draft = typeof useInput === 'function' ? (useInput((s) => (s === void 0 ? '' : s.draft)) ?? '') : ''
       const cwd = typeof useSessions === 'function'
         ? useSessions((s) => (sessionId === void 0 ? void 0 : s.byId[sessionId]?.cwd))
@@ -2604,7 +2699,7 @@ window.__ModuleLoader__.load({
      * horizontal scroll; clicking inserts the full content via the store.
      */
     function QuickPrompts({ form, useInput, inputActions, useSessions, sessionId }) {
-      const state = useWordStore(wordStore)
+      const state = useExternalStore(wordStore)
       const [, force] = React.useState(0)
       React.useEffect(() => form.subscribe(() => force((n) => n + 1)), [form])
       const rawN = Number((form.getSnapshot().value || {}).quickPromptCount)
@@ -2643,7 +2738,7 @@ window.__ModuleLoader__.load({
      * content multi-line textarea (large text OK), frequency read-only + reset.
      */
     function PromptsEditor({ store }) {
-      const state = useWordStore(store)
+      const state = useExternalStore(store)
       const [editId, setEditId] = React.useState(null) // null=closed | 'new' | prompt id
       const [bucket, setBucket] = React.useState('global')
       const [key, setKey] = React.useState(null)
