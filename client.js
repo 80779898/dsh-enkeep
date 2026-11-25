@@ -306,17 +306,19 @@ window.__ModuleLoader__.load({
       'color:var(--dsw-alias-label-tertiary, #888);}',
       '[data-enkeep-lastprompt-text]{',
       'flex:1;min-width:0;color:var(--dsw-alias-label-primary, #ddd);',
-      // 按钮固定占位（display:inline-flex + min-width），flex 已为其分配空间，
-      // 文字宽度恒定；无需额外 padding-right（那会白白再缩窄文字）。
+      // 文字区 flex:1 占满整行；按钮默认 display:none 不占位（与对话行行操作按钮
+      // 机制一致），hover/focus-within 时才 inline-flex 显现，文字平时铺满不截断。
       'display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;',
       'overflow:hidden;word-break:break-word;}',
-      // Copy button: fixed footprint, opacity-only reveal (hover/focus-within) via
-      // [data-enkeep-reveal] — never reflows the prompt text when shown/hidden.
-      '[data-enkeep-lastprompt-copy]{flex:none;display:inline-flex;align-items:center;gap:4px;',
-      'min-width:58px;justify-content:center;',
+      // Copy button: no footprint while hidden — matches the conversation row
+      // action pattern (display:none -> inline-flex on :hover/:focus-within),
+      // so the prompt text owns the full row instead of reserving button width.
+      '[data-enkeep-lastprompt-copy]{flex:none;display:none;align-items:center;gap:4px;',
       'padding:3px 8px;border:1px solid var(--dsw-alias-border-l3);border-radius:5px;',
       'background:var(--dsw-alias-bg-layer-1, #202124);color:var(--dsw-alias-label-secondary, #bbb);',
       'font-size:12px;line-height:1;cursor:pointer;white-space:nowrap;}',
+      '[data-enkeep-lastprompt]:hover [data-enkeep-lastprompt-copy],',
+      '[data-enkeep-lastprompt]:focus-within [data-enkeep-lastprompt-copy]{display:inline-flex;}',
       '[data-enkeep-lastprompt-copy]:hover{color:var(--dsw-alias-label-primary, #eee);',
       'border-color:var(--dsw-alias-border-l2);}',
     ].join('\n')
@@ -1563,7 +1565,6 @@ window.__ModuleLoader__.load({
           h('div', { 'data-enkeep-lastprompt-text': '' }, text),
           h('button', {
             'data-enkeep-lastprompt-copy': '',
-            'data-enkeep-reveal': true,
             type: 'button',
             title: '复制上一条指令',
             onClick: copy,
