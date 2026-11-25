@@ -763,6 +763,15 @@ window.__ModuleLoader__.load({
       const title = row && row.title && row.title.trim()
       return title ? (dir ? dir + ': ' + title : title) : (dir || (row && row.displayTitle) || id)
     }
+    // 下区「当前对话的外派对话」专用显示名：dsh-assistant 给 worker 会话生成的
+    // title 固定带 "任务 " 前缀（index.js:740），sessionLabel 又拼了 "目录名: "，
+    // 下区空间窄、前缀无意义，只保留任务描述正文。没有该前缀的历史/改名会话
+    // 原样显示；title 为空时回退 sessionLabel（保留目录名/displayTitle/id）。
+    // 仅作用于显示文本，不改底层 session title、不影响上区 sessionLabel。
+    function dispatchLabel(row, id) {
+      const title = (row && row.title && row.title.trim()) || ''
+      return title.replace(/^\s*任务\s+/, '') || title || sessionLabel(row, id)
+    }
     // 外派（assistant worker）会话识别。必须与 dsh-assistant 的约定保持一致：
     // 主判据是会话 id 前缀 da-worker-（同步、冷启动可用）；预设为辅助判据，
     // 防御 id 规则变化。字段缺失时用可选链安全降级为"仅前缀"。
@@ -1333,7 +1342,7 @@ window.__ModuleLoader__.load({
         const unread = !!(st && st.completionUnread === true)
         const awaiting = !!(st && st.pendingInteraction !== undefined)
         const state = awaiting ? 'awaiting' : (running ? 'ongoing' : (unread ? 'unread' : 'idle'))
-        allRows.push({ id, state, label: sessionLabel(row, id), updatedAt: row.updatedAt || 0 })
+        allRows.push({ id, state, label: dispatchLabel(row, id), updatedAt: row.updatedAt || 0 })
       }
       // 排序口径与 selectActivity 的 byRecentOrder 一致：updatedAt 倒序、Id 字典序兜底。
       allRows.sort((a, b) => (b.updatedAt - a.updatedAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
