@@ -1257,6 +1257,35 @@ window.__ModuleLoader__.load({
         // the explicit re-fetch trigger for repeated clicks on the same row (②).
       }, [selectedId, isAssistant, selectedIdRef, fetchNonce, lowerCollapsed])
 
+      // Auto-refresh the lower panel for background worker creation/termination.
+      // The fetch effect above is driven only by selection/click/collapse, so a
+      // worker created in the background never appears until the user interacts.
+      // Mirror AssistantTaskStats' visible-only 5s polling, but WITHOUT an
+      // initial tick: the effect above already runs once on mount, so an extra
+      // tick here would double-fetch. Only bump fetchNonce — the fetch effect
+      // above owns single-flight / seq gates / AbortController; this effect
+      // never aborts or issues a request itself.
+      const DISPATCH_POLL_MS = 5000
+      React.useEffect(() => {
+        if (!selectedId || !isAssistant || lowerCollapsed) return () => {}
+        if (typeof document === 'undefined') return () => {}
+        let timer = null
+        const tick = () => setFetchNonce((n) => n + 1)
+        const onVisible = () => {
+          if (document.hidden) {
+            if (timer) { clearInterval(timer); timer = null }
+          } else {
+            tick()
+            if (!timer) timer = setInterval(tick, DISPATCH_POLL_MS)
+          }
+        }
+        if (!document.hidden) timer = setInterval(tick, DISPATCH_POLL_MS)
+        document.addEventListener('visibilitychange', onVisible)
+        return () => {
+          if (timer) { clearInterval(timer); timer = null }
+          document.removeEventListener('visibilitychange', onVisible)
+        }
+      }, [selectedId, isAssistant, lowerCollapsed])
 
       // Non-assistant mode (or no selection yet) is pure blank: no rows, no
       // empty-state text, no request (the effect above already skipped it).
