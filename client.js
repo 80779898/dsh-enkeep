@@ -164,6 +164,18 @@ window.__ModuleLoader__.load({
       '@media (prefers-reduced-motion: reduce){',
       '[data-enkeep-dispatch-dot="ongoing"]{animation:none;}}',
       '[data-enkeep-activity-empty]{padding:10px 8px;font-size:12px;opacity:.7;text-align:center;}',
+      // Hover-reveal buttons: fixed footprint, opacity-only switch — showing or
+      // hiding never reflows neighbouring text. Mirrors dsh's chat action pattern.
+      // Note: unlike the conversation row actions above (display:none, no footprint),
+      // this reserves width on purpose — the user asked for ZERO reflow on reveal.
+      '@media (hover:hover){',
+      '[data-enkeep-reveal]{opacity:0;transition:opacity 80ms;}',
+      '[data-enkeep-reveal-host]:hover [data-enkeep-reveal],',
+      '[data-enkeep-reveal]:focus-within{opacity:1;}}',
+      // Touch / hover:none: buttons stay visible (no opacity:0 outside the media query).
+      '[data-enkeep-activity-workspace-row]{display:flex;align-items:center;width:100%;',
+      'border-radius:6px;padding-right:4px;}',
+      '[data-enkeep-workspace-actions]{flex:none;display:inline-flex;align-items:center;}',
       '[data-enkeep-activity-tabs]{display:flex;align-items:center;gap:6px;margin-right:6px;}',
       '[data-enkeep-activity-tab]{border:0;background:transparent;color:inherit;cursor:pointer;font-size:12px;padding:2px 4px;border-radius:4px;opacity:.7;}',
       '[data-enkeep-activity-tab][data-active]{opacity:1;font-weight:600;background:var(--dsw-alias-bg-layer-3);}',
@@ -294,14 +306,17 @@ window.__ModuleLoader__.load({
       'color:var(--dsw-alias-label-tertiary, #888);}',
       '[data-enkeep-lastprompt-text]{',
       'flex:1;min-width:0;color:var(--dsw-alias-label-primary, #ddd);',
+      // 按钮固定占位（display:inline-flex + min-width），flex 已为其分配空间，
+      // 文字宽度恒定；无需额外 padding-right（那会白白再缩窄文字）。
       'display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;',
       'overflow:hidden;word-break:break-word;}',
-      // Copy button: hidden until the bar is hovered; copies the plain text.
-      '[data-enkeep-lastprompt-copy]{flex:none;display:none;align-items:center;gap:4px;',
+      // Copy button: fixed footprint, opacity-only reveal (hover/focus-within) via
+      // [data-enkeep-reveal] — never reflows the prompt text when shown/hidden.
+      '[data-enkeep-lastprompt-copy]{flex:none;display:inline-flex;align-items:center;gap:4px;',
+      'min-width:58px;justify-content:center;',
       'padding:3px 8px;border:1px solid var(--dsw-alias-border-l3);border-radius:5px;',
       'background:var(--dsw-alias-bg-layer-1, #202124);color:var(--dsw-alias-label-secondary, #bbb);',
       'font-size:12px;line-height:1;cursor:pointer;white-space:nowrap;}',
-      '[data-enkeep-lastprompt]:hover [data-enkeep-lastprompt-copy]{display:inline-flex;}',
       '[data-enkeep-lastprompt-copy]:hover{color:var(--dsw-alias-label-primary, #eee);',
       'border-color:var(--dsw-alias-border-l2);}',
     ].join('\n')
@@ -876,6 +891,9 @@ window.__ModuleLoader__.load({
       if (kind === 'unpin') return h('svg', common,
         h('path', { d: 'M6 2h4l-1 4 2 2v1H5V8l2-2z' }), h('path', { d: 'M8 9v4' }),
         h('path', { d: 'M2.5 13.5l11-11', stroke: 'currentColor' }))
+      if (kind === 'delete') return h('svg', common,
+        h('path', { d: 'M3.5 4.5h9' }), h('path', { d: 'M6 4.5V3h4v1.5' }),
+        h('path', { d: 'M4.5 4.5l.6 8h5.8l.6-8' }), h('path', { d: 'M6.8 7v3.5M9.2 7v3.5' }))
       return null
     }
 
@@ -1530,12 +1548,13 @@ window.__ModuleLoader__.load({
           } else fallback()
         } catch (err) { fallback() }
       }
-      return h('div', { 'data-enkeep-lastprompt': '' },
+      return h('div', { 'data-enkeep-lastprompt': '', 'data-enkeep-reveal-host': true },
         h('div', { 'data-enkeep-lastprompt-inner': '' },
           h('span', { 'data-enkeep-lastprompt-label': '' }, '上一条指令'),
           h('div', { 'data-enkeep-lastprompt-text': '' }, text),
           h('button', {
             'data-enkeep-lastprompt-copy': '',
+            'data-enkeep-reveal': true,
             type: 'button',
             title: '复制上一条指令',
             onClick: copy,
@@ -1544,7 +1563,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function ActivityBar({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession, useSessions, useSessionStatus, useWorkspaces }) {
+    function ActivityBar({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession, deleteWorkspace, useSessions, useSessionStatus, useWorkspaces }) {
       // 活动区 tab：第一个是对话（原列表），第二个是工作区；选中态只影响 +A/+S 新会话目录。
       const [activityTab, setActivityTab] = React.useState('conversations')
       const [selectedWorkspaceId, setSelectedWorkspaceId] = React.useState(null)
@@ -1584,6 +1603,9 @@ window.__ModuleLoader__.load({
       const [confirmArchive, setConfirmArchive] = React.useState(null) // { id, title }
       const [stopArchiveTarget, setStopArchiveTarget] = React.useState(null) // { id, title } — running session
       const [archiveError, setArchiveError] = React.useState(null) // string
+      // Workspace deletion: confirm target + visible failure (never silent).
+      const [confirmWorkspaceDelete, setConfirmWorkspaceDelete] = React.useState(null) // { workspaceId, title }
+      const [workspaceDeleteError, setWorkspaceDeleteError] = React.useState(null) // string
       const [renameTarget, setRenameTarget] = React.useState(null) // { id, title }
       const [renameDraft, setRenameDraft] = React.useState('')
       const [renameError, setRenameError] = React.useState('')
@@ -1803,6 +1825,30 @@ window.__ModuleLoader__.load({
           setArchiveError('停止并归档失败：' + errMessage(err, '请稍后重试'))
         } finally { busyRef.current = false; setBusy(false) }
       }
+      // Delete a workspace registration (dsh's own workspaces.delete; folder + logs kept).
+      const askDeleteWorkspace = (workspaceId, title) => {
+        setWorkspaceDeleteError(null)
+        setConfirmWorkspaceDelete({ workspaceId, title })
+      }
+      const confirmDeleteWorkspace = async () => {
+        const target = confirmWorkspaceDelete
+        setConfirmWorkspaceDelete(null)
+        if (!target || busyRef.current) return
+        if (typeof deleteWorkspace !== 'function') {
+          setWorkspaceDeleteError('删除服务不可用')
+          return
+        }
+        busyRef.current = true
+        setBusy(true)
+        try {
+          await deleteWorkspace(target.workspaceId)
+          // 删除的若是当前选中工作区，清掉选中态，否则 +A/+S 会拿失效 id。
+          setSelectedWorkspaceId((cur) => cur === target.workspaceId ? null : cur)
+        } catch (err) {
+          console.warn('[enkeep] workspace delete failed', err)
+          setWorkspaceDeleteError('删除工作区失败：' + errMessage(err, '请稍后重试'))
+        } finally { busyRef.current = false; setBusy(false) }
+      }
       const askRename = (id, title) => {
         if (!rowActionGuard('rename:' + id)) return
         setRenameError('')
@@ -1851,16 +1897,27 @@ window.__ModuleLoader__.load({
       const hasAnyWorkspace = !!(ws && Array.isArray(ws.items) && ws.items.length)
       const workspaceItems = (ws && Array.isArray(ws.items) ? ws.items : []).filter((w) => !baseName(w && w.path).startsWith(TASK_DIR_PREFIX))
       const workspaceListNode = !collapsed ? (workspaceItems.length
-        ? workspaceItems.map((w) => h('button', {
-          key: w.workspaceId,
-          type: 'button',
-          'data-enkeep-activity-workspace': true,
-          'data-selected': selectedWorkspaceId === w.workspaceId ? true : undefined,
-          title: String(w && w.path || ''),
-          onClick: () => setSelectedWorkspaceId(w.workspaceId),
-        },
-          h('span', { 'data-enkeep-workspace-label': true }, String(w && w.title || baseName(w && w.path))),
-          h('span', { 'data-enkeep-workspace-count': true }, String((w && w.sessionIds || []).length))))
+        ? workspaceItems.map((w) => {
+          const title = String(w && w.title || baseName(w && w.path))
+          return h('div', { key: w.workspaceId, 'data-enkeep-activity-workspace-row': true, 'data-enkeep-reveal-host': true },
+            h('button', {
+              type: 'button',
+              'data-enkeep-activity-workspace': true,
+              'data-selected': selectedWorkspaceId === w.workspaceId ? true : undefined,
+              title: String(w && w.path || ''),
+              onClick: () => setSelectedWorkspaceId(w.workspaceId),
+            },
+              h('span', { 'data-enkeep-workspace-label': true }, title),
+              h('span', { 'data-enkeep-workspace-count': true }, String((w && w.sessionIds || []).length))),
+            h('div', { 'data-enkeep-workspace-actions': true, 'data-enkeep-reveal': true },
+              h('button', {
+                type: 'button',
+                'data-enkeep-row-action': true,
+                title: '删除工作区',
+                'aria-label': '删除工作区',
+                onClick: (e) => { e.stopPropagation(); askDeleteWorkspace(w.workspaceId, title) },
+              }, h(HeaderIcon, { kind: 'delete' }))))
+        })
         : h('div', { 'data-enkeep-activity-empty': true }, '暂无工作区（可用头部 + 新增）')) : null
 
       // 助手模式判定：只读 selectedId 对应行的 agentPreset；字段缺失安全降级为非助手。
@@ -1922,7 +1979,7 @@ window.__ModuleLoader__.load({
       const lowerActive = !!(selectedId && isAssistant) || workerCurrentActive
       // 工作区 tab 必须有入口：即使对话列表为空，只要有工作区就保留整条活动区，
       // 否则 tab 与 +A/+S 一起消失，用户无法查看/新增工作区。
-      if (!hasItems && !hasAnyWorkspace && !lowerActive && !confirmArchive && !stopArchiveTarget && !archiveError && !renameTarget) return null
+      if (!hasItems && !hasAnyWorkspace && !lowerActive && !confirmArchive && !stopArchiveTarget && !archiveError && !confirmWorkspaceDelete && !workspaceDeleteError && !renameTarget) return null
 
       return h('div', {
         'data-enkeep-activity-bar': true,
@@ -2091,6 +2148,20 @@ window.__ModuleLoader__.load({
             h('p', { 'data-enkeep-modal-error': true }, archiveError),
             h('div', { 'data-enkeep-modal-actions': true },
               h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: () => setArchiveError(null) }, '确定')))) : null),
+        // Workspace deletion confirm + visible failure — never silent.
+        portalToBody(confirmWorkspaceDelete ? h('div', { 'data-enkeep-modal-mask': true, onClick: () => setConfirmWorkspaceDelete(null) },
+          h('div', { 'data-enkeep-modal': true, onClick: (e) => e.stopPropagation() },
+            h('strong', null, '删除工作区'),
+            h('p', null, '确定删除工作区「' + confirmWorkspaceDelete.title + '」？仅从列表移除，文件夹与会话记录会保留。'),
+            h('div', { 'data-enkeep-modal-actions': true },
+              h('button', { type: 'button', onClick: () => setConfirmWorkspaceDelete(null) }, '取消'),
+              h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: confirmDeleteWorkspace }, '删除工作区')))) : null),
+        portalToBody(workspaceDeleteError ? h('div', { 'data-enkeep-modal-mask': true, onClick: () => setWorkspaceDeleteError(null) },
+          h('div', { 'data-enkeep-modal': true, onClick: (e) => e.stopPropagation() },
+            h('strong', null, '操作失败'),
+            h('p', { 'data-enkeep-modal-error': true }, workspaceDeleteError),
+            h('div', { 'data-enkeep-modal-actions': true },
+              h('button', { type: 'button', 'data-enkeep-modal-primary': true, onClick: () => setWorkspaceDeleteError(null) }, '确定')))) : null),
         portalToBody(renameTarget ? h('div', { 'data-enkeep-modal-mask': true, onClick: () => setRenameTarget(null) },
           h('div', { 'data-enkeep-modal': true, onClick: (e) => e.stopPropagation() },
             h('strong', null, '重命名会话'),
@@ -3184,6 +3255,16 @@ window.__ModuleLoader__.load({
           }
           // Rename uses the public low-level sessions.using(...).rename path —
           // the official rename dialog trigger is an internal slot, not exposed.
+          // Workspace deletion uses the same public service the sidebar uses:
+          // workspaces.delete(workspaceId) — removes the registration only,
+          // keeping the folder and session logs.
+          const deleteWorkspace = async (workspaceId) => {
+            const workspaces = get('workspaces')
+            if (!workspaces || typeof workspaces.delete !== 'function') {
+              throw new Error('workspaces.delete 服务不可用')
+            }
+            return workspaces.delete(workspaceId)
+          }
           const renameSession = async (id, title) => {
             const sessionsSvc = get('sessions')
             if (!sessionsSvc || typeof sessionsSvc.using !== 'function') {
@@ -3196,7 +3277,7 @@ window.__ModuleLoader__.load({
             name: 'shell.overlay',
             id: 'dsh-enkeep.activity-bar',
             order: 100,
-            inject: () => ({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession }),
+            inject: () => ({ form, openSession, newSession, addWorkspace, openSettings, pinSession, unpinSession, archiveSession, renameSession, deleteWorkspace }),
           }, (props) => h(ActivityBar, {
             form: props.form,
             openSession: props.openSession,
@@ -3207,6 +3288,7 @@ window.__ModuleLoader__.load({
             unpinSession: props.unpinSession,
             archiveSession: props.archiveSession,
             renameSession: props.renameSession,
+            deleteWorkspace: props.deleteWorkspace,
             useSessions: props.useSessions,
             useSessionStatus: props.useSessionStatus,
             useWorkspaces: props.useWorkspaces,
