@@ -306,14 +306,15 @@ window.__ModuleLoader__.load({
       'color:var(--dsw-alias-label-tertiary, #888);}',
       '[data-enkeep-lastprompt-text]{',
       'flex:1;min-width:0;color:var(--dsw-alias-label-primary, #ddd);',
-      // 文字区 flex:1 占满整行；按钮默认 display:none 不占位（与对话行行操作按钮
-      // 机制一致），hover/focus-within 时才 inline-flex 显现，文字平时铺满不截断。
+      // 文字区 flex:1 占满整行；按钮走 absolute 浮层、不进 flex 流，
+      // 显现时也不挤压文字，断行/截断位置恒定。
       'display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;',
       'overflow:hidden;word-break:break-word;}',
-      // Copy button: no footprint while hidden — matches the conversation row
-      // action pattern (display:none -> inline-flex on :hover/:focus-within),
-      // so the prompt text owns the full row instead of reserving button width.
-      '[data-enkeep-lastprompt-copy]{flex:none;display:none;align-items:center;gap:4px;',
+      // Copy button: absolute overlay — stays OUT of the flex flow so showing it
+      // never narrows/reflows the prompt text. Positioned against the relative
+      // wrapper (L295); right:12px aligns with the inner row's right padding.
+      '[data-enkeep-lastprompt-copy]{position:absolute;right:12px;top:50%;',
+      'transform:translateY(-50%);display:none;align-items:center;gap:4px;',
       'padding:3px 8px;border:1px solid var(--dsw-alias-border-l3);border-radius:5px;',
       'background:var(--dsw-alias-bg-layer-1, #202124);color:var(--dsw-alias-label-secondary, #bbb);',
       'font-size:12px;line-height:1;cursor:pointer;white-space:nowrap;}',
@@ -1559,7 +1560,7 @@ window.__ModuleLoader__.load({
           } else fallback()
         } catch (err) { fallback() }
       }
-      return h('div', { 'data-enkeep-lastprompt': '', 'data-enkeep-reveal-host': true },
+      return h('div', { 'data-enkeep-lastprompt': '' },
         h('div', { 'data-enkeep-lastprompt-inner': '' },
           h('span', { 'data-enkeep-lastprompt-label': '' }, '上一条指令'),
           h('div', { 'data-enkeep-lastprompt-text': '' }, text),
