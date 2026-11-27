@@ -242,6 +242,8 @@ window.__ModuleLoader__.load({
       '[data-enkeep-activity-item][data-enkeep-current]{',
       'background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 22%, transparent);}',
       '[data-enkeep-activity-label]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      // 派生任务计数跟在名字后：不参与 flex 伸缩，长名字先省略号、计数不被挤掉。
+      '[data-enkeep-activity-derived]{flex:none;opacity:.7;font-size:11px;white-space:nowrap;}',
       // Confirm / rename dialogs (centred over the viewport, above the bar).
       '[data-enkeep-modal-mask]{position:fixed;inset:0;z-index:1000;',
       'display:flex;align-items:center;justify-content:center;',
@@ -831,7 +833,7 @@ window.__ModuleLoader__.load({
         const isCurrent = id === current
         const isWorker = isAssistantWorkerSession(id, row)
         const dispatch = isWorker && !isPinned && !isCurrent
-        out.push({ id, state, awaiting, current: isCurrent, pinned: isPinned, dispatch, isWorker, activeDerived: hasActiveDerived, label: sessionLabel(row, id), rawTitle, updatedAt: row.updatedAt || 0 })
+        out.push({ id, state, awaiting, current: isCurrent, pinned: isPinned, dispatch, isWorker, activeDerived: hasActiveDerived, derivedCounts: d, label: sessionLabel(row, id), rawTitle, updatedAt: row.updatedAt || 0 })
       }
       // 排序分两段：置顶区在前，普通区在后；各自按 updatedAt 倒序（最近活动在前），
       // updatedAt 相同时以不可变的 id（session-<uuid>）字典序兜底，保证结果稳定。
@@ -2090,7 +2092,13 @@ window.__ModuleLoader__.load({
                     onClick: () => onSelectRow(it.id),
                   },
                     h('span', { 'data-enkeep-dot': it.state }),
-                    h('span', { 'data-enkeep-activity-label': true }, it.label)),
+                    h('span', { 'data-enkeep-activity-label': true }, it.label),
+                    it.derivedCounts && ((it.derivedCounts.active > 0) || (it.derivedCounts.waiting > 0))
+                      ? h('span', {
+                        'data-enkeep-activity-derived': true,
+                        title: '活跃 ' + it.derivedCounts.active + ' · 待决 ' + it.derivedCounts.waiting,
+                      }, '(' + it.derivedCounts.active + '/' + it.derivedCounts.waiting + ')')
+                      : null),
                   h('div', { 'data-enkeep-activity-row-actions': true },
                     h('button', {
                       type: 'button',
