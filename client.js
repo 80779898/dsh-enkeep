@@ -242,8 +242,8 @@ window.__ModuleLoader__.load({
       '[data-enkeep-activity-item][data-enkeep-current]{',
       'background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8bf5) 22%, transparent);}',
       '[data-enkeep-activity-label]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-      // 派生任务计数跟在名字后：不参与 flex 伸缩，长名字先省略号、计数不被挤掉。
-      '[data-enkeep-activity-derived]{flex:none;opacity:.7;font-size:11px;white-space:nowrap;}',
+      // 活动数跟在名字后：不参与 flex 伸缩，长名字先省略号、计数不被挤掉。
+      '[data-enkeep-activity-count]{flex:none;opacity:.7;font-size:11px;white-space:nowrap;}',
       // Confirm / rename dialogs (centred over the viewport, above the bar).
       '[data-enkeep-modal-mask]{position:fixed;inset:0;z-index:1000;',
       'display:flex;align-items:center;justify-content:center;',
@@ -833,7 +833,27 @@ window.__ModuleLoader__.load({
         const isCurrent = id === current
         const isWorker = isAssistantWorkerSession(id, row)
         const dispatch = isWorker && !isPinned && !isCurrent
-        out.push({ id, state, awaiting, current: isCurrent, pinned: isPinned, dispatch, isWorker, activeDerived: hasActiveDerived, derivedCounts: d, label: sessionLabel(row, id), rawTitle, updatedAt: row.updatedAt || 0 })
+        // 行名后只显示一个活动数：助手模式=外派活跃派生数；其他模式=运行中的直接子智能体数（只一层）。
+        // 子智能体判定与 dsh-client-ui-subagent 同构：statuses.running ?? byId.running，不递归孙级。
+        const isAssistantRow = !!(row.projectionValues && row.projectionValues.agentPreset === 'dsh-assistant-main')
+        let activityCount, countKind
+        if (isAssistantRow) {
+          activityCount = d ? d.active : 0
+          countKind = 'dispatch'
+        } else {
+          const proj = (sessions && sessions.projectionsBySession && sessions.projectionsBySession[id]) || null
+          const catalog = (proj && proj.values && proj.values.subagentCatalog) || []
+          let n = 0
+          for (const entry of catalog) {
+            if (!entry) continue
+            const st2 = statuses && statuses.get ? statuses.get(entry.id) : undefined
+            const childRunning = (st2 && st2.running !== undefined) ? st2.running : !!(byId[entry.id] && byId[entry.id].running)
+            if (childRunning === true) n++
+          }
+          activityCount = n
+          countKind = 'subagents'
+        }
+        out.push({ id, state, awaiting, current: isCurrent, pinned: isPinned, dispatch, isWorker, activeDerived: hasActiveDerived, derivedCounts: d, activityCount, countKind, label: sessionLabel(row, id), rawTitle, updatedAt: row.updatedAt || 0 })
       }
       // 排序分两段：置顶区在前，普通区在后；各自按 updatedAt 倒序（最近活动在前），
       // updatedAt 相同时以不可变的 id（session-<uuid>）字典序兜底，保证结果稳定。
@@ -2093,11 +2113,13 @@ window.__ModuleLoader__.load({
                   },
                     h('span', { 'data-enkeep-dot': it.state }),
                     h('span', { 'data-enkeep-activity-label': true }, it.label),
-                    it.derivedCounts && ((it.derivedCounts.active > 0) || (it.derivedCounts.waiting > 0))
+                    it.activityCount > 0
                       ? h('span', {
-                        'data-enkeep-activity-derived': true,
-                        title: '活跃 ' + it.derivedCounts.active + ' · 待决 ' + it.derivedCounts.waiting,
-                      }, '(' + it.derivedCounts.active + '/' + it.derivedCounts.waiting + ')')
+                        'data-enkeep-activity-count': true,
+                        title: it.countKind === 'dispatch'
+                          ? ('外派活跃 ' + it.activityCount)
+                          : ('运行中的直接子智能体 ' + it.activityCount),
+                      }, '(' + it.activityCount + ')')
                       : null),
                   h('div', { 'data-enkeep-activity-row-actions': true },
                     h('button', {
