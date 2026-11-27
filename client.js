@@ -244,6 +244,8 @@ window.__ModuleLoader__.load({
       '[data-enkeep-activity-label]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       // 活动数跟在名字后：不参与 flex 伸缩，长名字先省略号、计数不被挤掉。
       '[data-enkeep-activity-count]{flex:none;opacity:.7;font-size:11px;white-space:nowrap;}',
+      // 助手模式徽标「A」：不参与 flex 伸缩，低调次要色，不与状态圆点/高亮抢视觉。
+      '[data-enkeep-assistant-badge]{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:13px;height:13px;padding:0 2px;border-radius:3px;background:var(--dsw-alias-interactive-bg-hover, rgba(255,255,255,.08));color:var(--dsw-alias-label-tertiary, #999);font-size:9px;line-height:1;}',
       // Confirm / rename dialogs (centred over the viewport, above the bar).
       '[data-enkeep-modal-mask]{position:fixed;inset:0;z-index:1000;',
       'display:flex;align-items:center;justify-content:center;',
@@ -2113,6 +2115,12 @@ window.__ModuleLoader__.load({
                   },
                     h('span', { 'data-enkeep-dot': it.state }),
                     h('span', { 'data-enkeep-activity-label': true }, it.label),
+                    it.countKind === 'dispatch'
+                      ? h('span', {
+                        'data-enkeep-assistant-badge': true,
+                        title: '助手模式（+A 创建）',
+                      }, 'A')
+                      : null,
                     it.activityCount > 0
                       ? h('span', {
                         'data-enkeep-activity-count': true,
